@@ -1,0 +1,60 @@
+{
+  "id": "/",
+  "name": "Caris Beauty and Cosmetics",
+  "short_name": "Caris Beauty",
+  "description": "Genuine skincare, haircare, makeup and perfumes in Mbeya, Tanzania. Sell, manage stock and track your shop offline.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#fbf6ef",
+  "theme_color": "#f97316",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Sell",
+      "short_name": "Sell",
+      "description": "Open the point of sale",
+      "url": "/pos",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Stock",
+      "short_name": "Stock",
+      "description": "View stock and products",
+      "url": "/stock",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Reports",
+      "short_name": "Reports",
+      "description": "Sales and profit reports",
+      "url": "/reports",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

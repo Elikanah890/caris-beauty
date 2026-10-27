@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12271c"/>
+      <stop offset="0.55" stop-color="#12271c"/>
+      <stop offset="1" stop-color="#1a3826"/>
+    </linearGradient>
+    <radialGradient id="r" cx="0.62" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#7cc47a" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#7cc47a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#g)"/>
+  <rect width="1600" height="900" fill="url(#r)"/>
+  <text x="1180" y="200" font-family="Georgia, serif" font-size="120" fill="#fbf6ef" opacity="0.07" text-anchor="middle">BEAUTY</text>
+  <text x="1180" y="250" font-family="Arial, sans-serif" font-size="26" letter-spacing="14" fill="#fbf6ef" opacity="0.06" text-anchor="middle">SKINCARE · MAKEUP · PERFUME</text>
+</svg>

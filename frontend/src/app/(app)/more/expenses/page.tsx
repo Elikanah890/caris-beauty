@@ -1,0 +1,315 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import {
+  Loader2,
+  Plus,
+  Receipt,
+  Trash2,
+  Wallet,
+  WifiOff
+} from 'lucide-react';
+import { PageHeader, EmptyState } from '@/components/ui/misc';
+import { Button } from '@/components/ui/button';
+import { Input, Label, Select } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
+import { PermissionGate } from '@/components/permission-gate';
+import { toast } from '@/components/ui/toast';
+import { useExpenses } from '@/lib/hooks';
+import { useAuthStore } from '@/store/auth-store';
+import { deleteExpense, recordExpense, LocalRuleError } from '@/lib/repo';
+import { eatDateKey, formatDate, formatTZS } from '@/lib/format';
+import { t } from '@/lib/strings';
+import type { Tender } from '@/lib/types';
+
+const CATEGORIES = ['Rent', 'Transport', 'Utilities', 'Salaries', 'Supplies', 'Other'] as const;
+const TENDERS: Array<{ id: Tender; label: string }> = [
+  { id: 'cash', label: 'Cash' },
+  { id: 'mpesa', label: 'M-Pesa' },
+  { id: 'tigopesa', label: 'Tigo Pesa' },
+  { id: 'airtel', label: 'Airtel Money' },
+  { id: 'bank', label: 'Bank' }
+];
+
+const schema = z.object({
+  category: z.string().min(1),
+  description: z.string().min(2, 'Describe the expense'),
+  amount: z.coerce.number().int().positive('Enter an amount'),
+  paidVia: z.enum(['cash', 'mpesa', 'tigopesa', 'airtel', 'bank', 'credit']),
+  spentAt: z.string().min(1)
+});
+
+type FormValues = z.infer<typeof schema>;
+
+function ExpensesContent() {
+  const user = useAuthStore((state) => state.user);
+  const expenses = useExpenses();
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting }
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      category: 'Supplies',
+      description: '',
+      amount: 0,
+      paidVia: 'cash',
+      spentAt: eatDateKey()
+    }
+  });
+
+  const active = (expenses ?? []).filter((expense) => !expense.deletedAt);
+  const monthKey = eatDateKey().slice(0, 7);
+  const monthTotal = active
+    .filter((expense) => eatDateKey(expense.spentAt).startsWith(monthKey))
+    .reduce((sum, expense) => sum + Number(expense.amount), 0);
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, typeof active>();
+    for (const expense of active) {
+      const key = eatDateKey(expense.spentAt);
+      const list = groups.get(key) ?? [];
+      list.push(expense);
+      groups.set(key, list);
+    }
+    return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [active]);
+
+  const onSubmit = async (values: FormValues) => {
+    if (!user) return;
+    try {
+      await recordExpense({
+        category: values.category,
+        description: values.description,
+        amount: values.amount,
+        paidVia: values.paidVia,
+        spentAt: new Date(`${values.spentAt}T12:00:00+03:00`).toISOString(),
+        user
+      });
+      toast.success(t.expenses.saved);
+      reset({
+        category: 'Supplies',
+        description: '',
+        amount: 0,
+        paidVia: 'cash',
+        spentAt: eatDateKey()
+      });
+      setOpen(false);
+    } catch (err) {
+      toast.error('Could not record expense', err instanceof LocalRuleError ? err.message : undefined);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!user) return;
+    setDeleting(id);
+    try {
+      await deleteExpense(id, user);
+      toast.success(t.expenses.deleted);
+    } catch (err) {
+      toast.error('Could not delete expense', err instanceof Error ? err.message : undefined);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Money out"
+        title={t.expenses.title}
+        subtitle={t.expenses.subtitle}
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={15} /> {t.expenses.add}
+          </Button>
+        }
+      />
+
+      {!online && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#f2dfb5] bg-[#fdf3dd] px-3 py-2.5 text-xs text-[#8b681f]">
+          <WifiOff size={15} /> Offline expenses are queued and sync automatically.
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="animate-fade-up">
+          <CardContent className="p-4">
+            <span className="inline-flex rounded-xl bg-brand-50 p-2.5 text-brand-600">
+              <Wallet size={17} />
+            </span>
+            <p className="mt-3 text-[10px] font-medium uppercase tracking-wide text-muted">
+              This month
+            </p>
+            <p className="numeric mt-0.5 font-display text-xl font-semibold text-ink">
+              {formatTZS(monthTotal)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="animate-fade-up delay-1">
+          <CardContent className="p-4">
+            <span className="inline-flex rounded-xl bg-[#eef4ec] p-2.5 text-moss">
+              <Receipt size={17} />
+            </span>
+            <p className="mt-3 text-[10px] font-medium uppercase tracking-wide text-muted">
+              Entries
+            </p>
+            <p className="numeric mt-0.5 font-display text-xl font-semibold text-ink">
+              {active.length}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="animate-fade-up delay-2">
+          <CardContent className="p-4">
+            <span className="inline-flex rounded-xl bg-[#fdf3dd] p-2.5 text-[#9a7020]">
+              <Receipt size={17} />
+            </span>
+            <p className="mt-3 text-[10px] font-medium uppercase tracking-wide text-muted">
+              Average
+            </p>
+            <p className="numeric mt-0.5 font-display text-xl font-semibold text-ink">
+              {formatTZS(active.length ? Math.round(monthTotal / active.length) : 0)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {!expenses ? (
+          <div className="h-40 animate-pulse rounded-2xl bg-white/60" />
+        ) : active.length === 0 ? (
+          <div className="surface">
+            <EmptyState
+              title={t.expenses.empty}
+              description="Record rent, transport or supplies — it feeds your profit reports."
+              icon={<Wallet size={22} />}
+              action={<Button onClick={() => setOpen(true)}>Record expense</Button>}
+            />
+          </div>
+        ) : (
+          grouped.map(([date, rows]) => (
+            <div key={date}>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <p className="text-[11px] font-semibold text-muted">{formatDate(`${date}T12:00:00+03:00`)}</p>
+                <p className="numeric text-[11px] font-semibold text-ink">
+                  {formatTZS(rows.reduce((sum, row) => sum + Number(row.amount), 0))}
+                </p>
+              </div>
+              <div className="surface divide-y divide-line/70 overflow-hidden">
+                {rows.map((expense) => (
+                  <div key={expense.id} className="flex items-center gap-3 p-3.5">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cream text-muted">
+                      <Wallet size={15} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold text-ink">{expense.description}</p>
+                        <Badge variant="default">{expense.category}</Badge>
+                        <Badge variant="brand" className="capitalize">
+                          {expense.paidVia}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-muted">
+                        {expense.userName ?? 'You'} · {formatDate(expense.spentAt, { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <p className="numeric text-sm font-bold text-ink">{formatTZS(expense.amount)}</p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={deleting === expense.id}
+                      onClick={() => void remove(expense.id)}
+                      className="text-muted hover:text-berry"
+                      aria-label="Delete expense"
+                    >
+                      {deleting === expense.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={14} />}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t.expenses.add}
+        description="Every expense is logged and included in net profit."
+        size="md"
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="expense-category">{t.expenses.category}</Label>
+              <Select id="expense-category" {...register('category')}>
+                {CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="expense-date">{t.expenses.date}</Label>
+              <Input id="expense-date" type="date" {...register('spentAt')} />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="expense-description">{t.expenses.description}</Label>
+            <Input id="expense-description" placeholder="e.g. Boda to supplier" {...register('description')} />
+            {errors.description && (
+              <p className="mt-1 text-xs text-berry">{errors.description.message}</p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="expense-amount">{t.expenses.amount}</Label>
+              <Input id="expense-amount" type="number" min={1} step={1} {...register('amount')} />
+              {errors.amount && <p className="mt-1 text-xs text-berry">{errors.amount.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor="expense-paid">{t.expenses.paidVia}</Label>
+              <Select id="expense-paid" {...register('paidVia')}>
+                {TENDERS.map((tender) => (
+                  <option key={tender.id} value={tender.id}>
+                    {tender.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus size={15} />}
+              {t.expenses.add}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
+
+export default function ExpensesPage() {
+  return (
+    <PermissionGate flag="expenses.record">
+      <ExpensesContent />
+    </PermissionGate>
+  );
+}

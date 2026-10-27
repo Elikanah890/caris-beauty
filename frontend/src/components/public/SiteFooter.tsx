@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { MapPin, MessageCircle, Phone } from 'lucide-react';
+import { InstallPwaButton } from '@/components/install-pwa-button';
 
 const explore = [
   { label: 'Shop', href: '/shop' },
@@ -7,7 +8,8 @@ const explore = [
   { label: 'About Us', href: '/about' },
   { label: 'How It Works', href: '/how-it-works' },
   { label: 'Help', href: '/help' },
-  { label: 'Contact', href: '/contact' }
+  { label: 'Contact', href: '/contact' },
+  { label: 'Staff login', href: '/login' }
 ];
 
 export function SiteFooter({ variant = 'default' }: { variant?: 'default' | 'home' }) {
@@ -42,6 +44,12 @@ export function SiteFooter({ variant = 'default' }: { variant?: 'default' | 'hom
               Beauty &amp; Cosmetics
             </p>
             <p className={`mt-1 text-sm ${muted}`}>Mbeya, Tanzania</p>
+            <div className="mt-4">
+              <InstallPwaButton
+                variant={home ? 'home' : 'outline'}
+                label="Download app"
+              />
+            </div>
           </div>
 
           <div>

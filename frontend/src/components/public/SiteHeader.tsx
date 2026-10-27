@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, MessageCircle, Search, X } from 'lucide-react';
+import { LogIn, Menu, MessageCircle, Search, X } from 'lucide-react';
 import { InstallPwaButton } from '@/components/install-pwa-button';
 
 const links = [
@@ -119,6 +119,17 @@ export function SiteHeader({ variant = 'default' }: { variant?: 'default' | 'hom
             </div>
           )}
 
+          <Link
+            href="/login"
+            className={`hidden items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition lg:inline-flex ${
+              home
+                ? 'border border-blush-200 bg-blush-50 text-[#4a3034] hover:border-blush-400 hover:text-blush-700'
+                : 'border border-line bg-white text-ink hover:border-brand-300 hover:text-brand-700'
+            }`}
+          >
+            <LogIn size={14} /> Staff login
+          </Link>
+
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
@@ -168,6 +179,17 @@ export function SiteHeader({ variant = 'default' }: { variant?: 'default' | 'hom
             variant={home ? 'home' : 'outline'}
             className="mt-4 w-full"
           />
+          <Link
+            href="/login"
+            onClick={() => setOpen(false)}
+            className={`mt-2 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-xs font-semibold transition ${
+              home
+                ? 'border-blush-300 text-blush-700 hover:bg-blush-100'
+                : 'border-line text-ink hover:border-brand-300 hover:text-brand-700'
+            }`}
+          >
+            <LogIn size={15} /> Staff login
+          </Link>
           {home && (
             <Link
               href="/shop"

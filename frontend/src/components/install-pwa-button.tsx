@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Download, Loader2, Share2 } from 'lucide-react';
+import { Download, Loader2, Share2, Smartphone } from 'lucide-react';
 import { Dialog } from './ui/dialog';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -23,16 +23,18 @@ const VARIANTS: Record<Variant, string> = {
 export function InstallPwaButton({
   variant = 'outline',
   compact = false,
+  label = 'Install app',
   className
 }: {
   variant?: Variant;
   compact?: boolean;
+  label?: string;
   className?: string;
 }) {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [ios, setIos] = useState(false);
-  const [iosHelp, setIosHelp] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -65,12 +67,10 @@ export function InstallPwaButton({
   }, []);
 
   if (installed) return null;
-  const canInstall = Boolean(deferred) || ios;
-  if (!canInstall) return null;
 
   const install = async () => {
     if (!deferred) {
-      setIosHelp(true);
+      setHelpOpen(true);
       return;
     }
     setBusy(true);
@@ -96,28 +96,46 @@ export function InstallPwaButton({
         )}
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-        {compact ? 'Install' : 'Install app'}
+        {compact ? 'Install' : label}
       </button>
 
       <Dialog
-        open={iosHelp}
-        onOpenChange={setIosHelp}
-        title="Install on iPhone or iPad"
-        description="Safari does not show an install button, but you can add this app to your home screen."
+        open={helpOpen}
+        onOpenChange={setHelpOpen}
+        title="Install the Caris app"
+        description="Add the app to your phone or computer for one-tap access and offline use."
         size="sm"
-        footer={<Button onClick={() => setIosHelp(false)}>Got it</Button>}
+        footer={<Button onClick={() => setHelpOpen(false)}>Got it</Button>}
       >
         <div className="space-y-3 text-sm text-muted">
-          <p className="flex items-start gap-2">
-            <Share2 size={16} className="mt-0.5 shrink-0 text-brand-600" />
-            Tap the <strong className="text-ink">Share</strong> button in Safari.
-          </p>
-          <p className="rounded-xl bg-cream px-3 py-2 text-xs">
-            Scroll down and tap <strong className="text-ink">Add to Home Screen</strong>, then
-            tap <strong className="text-ink">Add</strong>.
-          </p>
+          {ios ? (
+            <>
+              <p className="flex items-start gap-2">
+                <Share2 size={16} className="mt-0.5 shrink-0 text-brand-600" />
+                Tap the <strong className="text-ink">Share</strong> button in Safari.
+              </p>
+              <p className="rounded-xl bg-cream px-3 py-2 text-xs">
+                Scroll down and tap <strong className="text-ink">Add to Home Screen</strong>,
+                then tap <strong className="text-ink">Add</strong>.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="flex items-start gap-2">
+                <Smartphone size={16} className="mt-0.5 shrink-0 text-brand-600" />
+                Open your browser menu (<strong className="text-ink">⋮</strong> or{' '}
+                <strong className="text-ink">⋯</strong>) and choose{' '}
+                <strong className="text-ink">Install app</strong> or{' '}
+                <strong className="text-ink">Add to Home screen</strong>.
+              </p>
+              <p className="rounded-xl bg-cream px-3 py-2 text-xs">
+                On desktop Chrome or Edge, use the install icon in the address bar.
+              </p>
+            </>
+          )}
           <p className="text-xs">
-            The app will open full-screen like a normal phone app and works offline.
+            The install option appears after the site has been opened online once over
+            HTTPS. After installing, it opens full-screen and keeps working offline.
           </p>
         </div>
       </Dialog>

@@ -5,10 +5,12 @@ import {
   CreditCard,
   Headphones,
   Lock,
+  LogIn,
   ShieldCheck,
   Truck
 } from 'lucide-react';
 import { HeroSearch } from '@/components/public/HeroSearch';
+import { InstallPwaButton } from '@/components/install-pwa-button';
 import { ProductCard } from '@/components/public/ProductCard';
 import { HeroVideo } from '@/components/public/HeroVideo';
 import { SiteFooter } from '@/components/public/SiteFooter';
@@ -111,6 +113,20 @@ export default async function HomePage() {
               </p>
 
               <HeroSearch />
+
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 rounded-full bg-blush-700 px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-blush-800"
+                >
+                  <LogIn size={14} /> Staff login
+                </Link>
+                <InstallPwaButton
+                  variant="home"
+                  label="Download app"
+                  className="!rounded-full px-5 py-2.5"
+                />
+              </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-[#5d474b]">
                 <span className="flex items-center gap-1.5">

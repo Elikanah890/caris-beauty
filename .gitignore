@@ -46,3 +46,6 @@ backups/
 # Internal/local-only files
 /PRODUCTION_READINESS.md
 /frontend/public/images/profile-lady.jpg
+
+# Playwright MCP artifacts
+.playwright-mcp/

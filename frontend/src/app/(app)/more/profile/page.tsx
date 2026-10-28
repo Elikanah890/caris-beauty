@@ -66,7 +66,11 @@ export default function ProfilePage() {
     clearAccessToken();
     reset();
     toast.info('Signed out', 'Your sales queue is safe on this device.');
-    router.replace('/auth/login');
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      window.location.assign('/auth/login');
+    } else {
+      router.replace('/auth/login');
+    }
   };
 
   const signOutDevice = async (target: Device) => {
@@ -84,7 +88,12 @@ export default function ProfilePage() {
         clearAccessToken();
         reset();
         toast.success('Device signed out', 'Sign in again on this device.');
-        router.replace('/auth/login?deviceReleased=1');
+        const href = '/auth/login?deviceReleased=1';
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          window.location.assign(href);
+        } else {
+          router.replace(href);
+        }
       } else {
         toast.success('Device signed out', `${target.name} will be signed out.`);
       }

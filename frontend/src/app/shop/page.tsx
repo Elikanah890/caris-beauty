@@ -11,6 +11,8 @@ export const metadata: Metadata = {
     'Browse skincare, haircare, makeup, perfumes, body care and beauty accessories. Order on WhatsApp +255 657 031 253.'
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function ShopPage() {
   const [categories, products] = await Promise.all([
     getPublicCategories(),

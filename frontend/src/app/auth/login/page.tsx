@@ -40,6 +40,7 @@ export default function LoginPage() {
   const [pendingRedirect, setPendingRedirect] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const businessRows = useLiveQuery(() => db.business.toArray(), []);
+  const pendingChanges = useLiveQuery(() => db.sync_queue.count(), []);
   const businessName = businessRows?.[0]?.name ?? 'your duka';
 
   const {
@@ -53,7 +54,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (initialized && user && !isSubmitting && !pendingRedirect) {
-      router.replace(user.role === 'owner' ? '/dashboard' : '/pos');
+      const href = user.role === 'owner' ? '/dashboard' : '/pos';
+      if (!navigator.onLine) window.location.replace(href);
+      else router.replace(href);
     }
   }, [initialized, user, router, isSubmitting, pendingRedirect]);
 
@@ -109,7 +112,11 @@ export default function LoginPage() {
 
   const finish = (role: 'owner' | 'employee') => {
     setPendingRedirect(true);
-    router.replace(role === 'owner' ? '/dashboard' : '/pos');
+    const href = role === 'owner' ? '/dashboard' : '/pos';
+    // Offline, the Next router cannot fetch an RSC payload. A normal page
+    // load lets the service worker serve the cached app document.
+    if (!navigator.onLine) window.location.assign(href);
+    else router.replace(href);
   };
 
   const completeOffline = async (values: FormValues) => {
@@ -121,6 +128,10 @@ export default function LoginPage() {
       offline: true
     });
     if (session.user.mustChangePassword) {
+      if (!navigator.onLine) {
+        setServerError('Connect to the internet to change your password.');
+        return;
+      }
       setPendingRedirect(true);
       router.replace('/auth/change-password');
       return;
@@ -208,6 +219,13 @@ export default function LoginPage() {
           {notice && (
             <div className="mb-4 rounded-xl border border-[#d9e6d4] bg-[#eef4ec] p-3 text-sm font-medium text-moss">
               {notice}
+            </div>
+          )}
+
+          {(pendingChanges ?? 0) > 0 && (
+            <div className="mb-4 rounded-xl border border-[#f2dfb5] bg-[#fdf3dd] p-3 text-xs font-medium leading-relaxed text-[#8b681f]">
+              {pendingChanges} change{pendingChanges === 1 ? '' : 's'} saved on this
+              device. Sign in to sync when the connection is available.
             </div>
           )}
 

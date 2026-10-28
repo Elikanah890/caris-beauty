@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -33,7 +34,13 @@ import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/misc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RevenueTrend } from '@/components/dashboard/charts';
+const RevenueTrend = dynamic(
+  () => import('@/components/dashboard/charts').then((mod) => mod.RevenueTrend),
+  {
+    ssr: false,
+    loading: () => <div className="h-[240px] animate-pulse rounded-2xl bg-cream" />
+  }
+);
 import { ActivityFeed } from '@/components/dashboard/activity-feed';
 import { PermissionGate } from '@/components/permission-gate';
 import type { Insight } from '@/lib/types';

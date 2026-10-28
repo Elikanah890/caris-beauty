@@ -13,7 +13,17 @@ interface CategoryPresentation {
   description: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+// Server components cannot fetch a relative URL. On a same-origin VPS setup
+// NEXT_PUBLIC_API_URL can stay relative for the browser while API_INTERNAL_URL
+// points at the local backend for server rendering.
+const INTERNAL_API_URL =
+  process.env.API_INTERNAL_URL ??
+  (PUBLIC_API_URL.startsWith('/') ? 'http://127.0.0.1:4000/api/v1' : PUBLIC_API_URL);
+
+function apiBase(): string {
+  return typeof window === 'undefined' ? INTERNAL_API_URL : PUBLIC_API_URL;
+}
 
 const PRESENTATION: Record<string, CategoryPresentation> = {
   'Skin care': {
@@ -93,7 +103,9 @@ function sortByDisplayOrder<T extends { name: string }>(categories: T[]): T[] {
 
 export async function getPublicCategories(): Promise<PublicCategory[]> {
   try {
-    const response = await fetch(`${API_URL}/public/categories`, { cache: 'no-store' });
+    const response = await fetch(`${apiBase()}/public/categories`, {
+      next: { revalidate: 60 }
+    });
 
     if (!response.ok) throw new Error(`Category request failed: ${response.status}`);
 
@@ -142,7 +154,9 @@ export function categoryImage(name: string | null | undefined): string {
 
 export async function getPublicProducts(): Promise<PublicProduct[]> {
   try {
-    const response = await fetch(`${API_URL}/public/products`, { cache: 'no-store' });
+    const response = await fetch(`${apiBase()}/public/products`, {
+      next: { revalidate: 60 }
+    });
     if (!response.ok) throw new Error(`Product request failed: ${response.status}`);
     const data = (await response.json()) as { products?: PublicProduct[] };
     return Array.isArray(data.products) ? data.products : [];

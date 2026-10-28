@@ -76,12 +76,21 @@ function activeFor(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  prefetch
+}: {
+  item: NavItem;
+  pathname: string;
+  prefetch: boolean;
+}) {
   const Icon = item.icon;
   const active = activeFor(pathname, item.href);
   return (
     <Link
       href={item.href}
+      prefetch={prefetch}
       className={cn(
         'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
         active
@@ -129,7 +138,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     clearAccessToken();
     reset();
     toast.info('Signed out', 'Your sales queue is safe on this device.');
-    router.replace('/auth/login');
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      window.location.assign('/auth/login');
+    } else {
+      router.replace('/auth/login');
+    }
   };
 
   return (
@@ -137,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <SyncEngine />
 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[252px] flex-col border-r border-line bg-[#fffdf9] px-4 py-5 lg:flex">
-        <Link href={user.role === 'owner' ? '/dashboard' : '/pos'} className="px-2">
+        <Link href={user.role === 'owner' ? '/dashboard' : '/pos'} prefetch={online} className="px-2">
           <BrandLockup name={business?.name ?? 'Duka'} />
         </Link>
 
@@ -146,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Shop
           </p>
           {shopNav.map((item) => (
-            <NavLink key={item.href} item={item} pathname={pathname} />
+            <NavLink key={item.href} item={item} pathname={pathname} prefetch={online} />
           ))}
           {manageNav.length > 0 && (
             <>
@@ -154,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Shop management
               </p>
               {manageNav.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} />
+                <NavLink key={item.href} item={item} pathname={pathname} prefetch={online} />
               ))}
             </>
           )}
@@ -234,7 +247,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {can(user, 'sales.make') && (
                 <button
                   type="button"
-                  onClick={() => router.push('/pos')}
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                      window.location.assign('/pos');
+                    } else {
+                      router.push('/pos');
+                    }
+                  }}
                   className="hidden items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium text-muted transition hover:border-brand-300 hover:text-ink sm:flex"
                 >
                   <Search size={14} />
@@ -246,7 +265,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {user.role === 'owner' && (
                 <button
                   type="button"
-                  onClick={() => router.push('/dashboard')}
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                      window.location.assign('/dashboard');
+                    } else {
+                      router.push('/dashboard');
+                    }
+                  }}
                   className="relative hidden rounded-full border border-line bg-white p-2 text-muted transition hover:text-brand-600 sm:block"
                   aria-label="Insights"
                 >
@@ -255,6 +280,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
               <Link
                 href="/more/profile"
+                prefetch={online}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white ring-2 ring-white"
               >
                 {initials(user.name)}
@@ -296,6 +322,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={online}
                     onClick={() => setMenuOpen(false)}
                     className={cn(
                       'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
@@ -332,6 +359,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={online}
                 className={cn(
                   'flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition',
                   active ? 'text-brand-600' : 'text-muted'

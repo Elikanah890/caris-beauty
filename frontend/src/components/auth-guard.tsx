@@ -52,6 +52,14 @@ export function landingFor(user: User): string {
   return '/more/profile';
 }
 
+function replaceLocation(router: { replace: (href: string) => void }, href: string): void {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    window.location.replace(href);
+    return;
+  }
+  router.replace(href);
+}
+
 function allow(user: User, rule: RouteRule): boolean {
   if (rule.ownerOnly) return user.role === 'owner';
   if (rule.permission) return can(user, rule.permission);
@@ -90,16 +98,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!initialized) return;
     if (!user) {
-      router.replace('/auth/login');
+      replaceLocation(router, '/auth/login');
       return;
     }
     if (user.mustChangePassword && pathname !== '/auth/change-password') {
-      router.replace('/auth/change-password');
+      replaceLocation(router, '/auth/change-password');
       return;
     }
     const rule = routeRule(pathname);
     if (rule && !allow(user, rule)) {
-      router.replace(landingFor(user));
+      replaceLocation(router, landingFor(user));
     }
   }, [initialized, user, router, pathname]);
 
@@ -131,7 +139,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
               ? 'This device was signed out. Sign in again with your password.'
               : 'Your session ended. Please sign in again.'
         );
-        router.replace(
+        replaceLocation(
+          router,
           disabled
             ? '/auth/login?disabled=1'
             : revoked

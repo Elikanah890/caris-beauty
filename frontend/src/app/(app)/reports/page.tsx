@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -18,7 +19,13 @@ import { Input, Label } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PermissionGate } from '@/components/permission-gate';
-import { RevenueTrend } from '@/components/dashboard/charts';
+const RevenueTrend = dynamic(
+  () => import('@/components/dashboard/charts').then((mod) => mod.RevenueTrend),
+  {
+    ssr: false,
+    loading: () => <div className="h-[240px] animate-pulse rounded-2xl bg-cream" />
+  }
+);
 import { useSnapshot } from '@/lib/hooks';
 import { useAuthStore } from '@/store/auth-store';
 import {

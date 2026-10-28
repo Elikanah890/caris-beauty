@@ -11,6 +11,8 @@ export const metadata: Metadata = {
     'Shop skincare, haircare, makeup, perfumes, body care and beauty accessories in Mbeya, Tanzania.'
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function CategoriesPage() {
   const categories = await getPublicCategories();
 

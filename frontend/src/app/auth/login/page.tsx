@@ -92,6 +92,12 @@ export default function LoginPage() {
       changed = true;
     }
 
+    if (params.get('deviceReleased') === '1') {
+      setNotice('Device released. Sign in with the account that will use this device.');
+      params.delete('deviceReleased');
+      changed = true;
+    }
+
     let authNotice: string | null = null;
     try {
       authNotice = window.sessionStorage.getItem('duka_auth_notice');
@@ -165,7 +171,7 @@ export default function LoginPage() {
           );
         } else if (err.code === 'DEVICE_LOCKED') {
           setServerError(
-            'This account is locked to another device. Ask the owner to release it in Staff, then try again.'
+            `${err.message} Use a different phone or browser for this account, or release the device from the account currently using it.`
           );
         } else {
           setServerError(err.message);

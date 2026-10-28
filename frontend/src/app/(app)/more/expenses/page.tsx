@@ -25,9 +25,13 @@ import { useAuthStore } from '@/store/auth-store';
 import { deleteExpense, recordExpense, LocalRuleError } from '@/lib/repo';
 import { eatDateKey, formatDate, formatTZS } from '@/lib/format';
 import { t } from '@/lib/strings';
-import type { Tender } from '@/lib/types';
+import {
+  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_VALUES,
+  expenseCategoryLabel
+} from '@/lib/expense-categories';
+import type { Expense, Tender } from '@/lib/types';
 
-const CATEGORIES = ['Rent', 'Transport', 'Utilities', 'Salaries', 'Supplies', 'Other'] as const;
 const TENDERS: Array<{ id: Tender; label: string }> = [
   { id: 'cash', label: 'Cash' },
   { id: 'mpesa', label: 'M-Pesa' },
@@ -37,7 +41,7 @@ const TENDERS: Array<{ id: Tender; label: string }> = [
 ];
 
 const schema = z.object({
-  category: z.string().min(1),
+  category: z.enum(EXPENSE_CATEGORY_VALUES),
   description: z.string().min(2, 'Describe the expense'),
   amount: z.coerce.number().int().positive('Enter an amount'),
   paidVia: z.enum(['cash', 'mpesa', 'tigopesa', 'airtel', 'bank', 'credit']),
@@ -51,6 +55,7 @@ function ExpensesContent() {
   const expenses = useExpenses();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const online = typeof navigator === 'undefined' ? true : navigator.onLine;
 
   const {
@@ -61,7 +66,7 @@ function ExpensesContent() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      category: 'Supplies',
+      category: 'supplies',
       description: '',
       amount: 0,
       paidVia: 'cash',
@@ -71,9 +76,27 @@ function ExpensesContent() {
 
   const active = (expenses ?? []).filter((expense) => !expense.deletedAt);
   const monthKey = eatDateKey().slice(0, 7);
-  const monthTotal = active
-    .filter((expense) => eatDateKey(expense.spentAt).startsWith(monthKey))
-    .reduce((sum, expense) => sum + Number(expense.amount), 0);
+  const monthExpenses = active.filter((expense) =>
+    eatDateKey(expense.spentAt).startsWith(monthKey)
+  );
+  const monthTotal = monthExpenses.reduce(
+    (sum, expense) => sum + Number(expense.amount),
+    0
+  );
+  const monthEntries = monthExpenses.length;
+  const categoryTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const expense of monthExpenses) {
+      totals.set(
+        expense.category,
+        (totals.get(expense.category) ?? 0) + Number(expense.amount)
+      );
+    }
+    return [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  }, [monthExpenses]);
+  const topCategory = categoryTotals[0]
+    ? expenseCategoryLabel(categoryTotals[0][0])
+    : '—';
 
   const grouped = useMemo(() => {
     const groups = new Map<string, typeof active>();
@@ -99,7 +122,7 @@ function ExpensesContent() {
       });
       toast.success(t.expenses.saved);
       reset({
-        category: 'Supplies',
+        category: 'supplies',
         description: '',
         amount: 0,
         paidVia: 'cash',
@@ -117,6 +140,7 @@ function ExpensesContent() {
     try {
       await deleteExpense(id, user);
       toast.success(t.expenses.deleted);
+      setDeleteTarget(null);
     } catch (err) {
       toast.error('Could not delete expense', err instanceof Error ? err.message : undefined);
     } finally {
@@ -166,7 +190,7 @@ function ExpensesContent() {
               Entries
             </p>
             <p className="numeric mt-0.5 font-display text-xl font-semibold text-ink">
-              {active.length}
+              {monthEntries}
             </p>
           </CardContent>
         </Card>
@@ -176,14 +200,55 @@ function ExpensesContent() {
               <Receipt size={17} />
             </span>
             <p className="mt-3 text-[10px] font-medium uppercase tracking-wide text-muted">
-              Average
+              Top category
             </p>
-            <p className="numeric mt-0.5 font-display text-xl font-semibold text-ink">
-              {formatTZS(active.length ? Math.round(monthTotal / active.length) : 0)}
-            </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-ink">{topCategory}</p>
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-4">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-ink">Breakdown by category</p>
+            <span className="text-[10px] font-medium text-muted">
+              {monthEntries} entr{monthEntries === 1 ? 'y' : 'ies'} this month
+            </span>
+          </div>
+          {categoryTotals.length === 0 ? (
+            <p className="mt-3 text-xs text-muted">No expenses recorded this month.</p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {categoryTotals.map(([category, amount]) => {
+                const percent = monthTotal
+                  ? Math.round((amount / monthTotal) * 100)
+                  : 0;
+                return (
+                  <div key={category}>
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="truncate font-medium text-ink">
+                        {expenseCategoryLabel(category)}
+                      </span>
+                      <span className="shrink-0 text-muted">
+                        <span className="numeric font-semibold text-ink">
+                          {formatTZS(amount)}
+                        </span>{' '}
+                        · {percent}%
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-cream">
+                      <div
+                        className="h-full rounded-full bg-brand-500"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="mt-4 space-y-4">
         {!expenses ? (
@@ -215,7 +280,9 @@ function ExpensesContent() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs font-semibold text-ink">{expense.description}</p>
-                        <Badge variant="default">{expense.category}</Badge>
+                        <Badge variant="default">
+                          {expenseCategoryLabel(expense.category)}
+                        </Badge>
                         <Badge variant="brand" className="capitalize">
                           {expense.paidVia}
                         </Badge>
@@ -229,7 +296,7 @@ function ExpensesContent() {
                       variant="ghost"
                       size="icon"
                       disabled={deleting === expense.id}
-                      onClick={() => void remove(expense.id)}
+                      onClick={() => setDeleteTarget(expense)}
                       className="text-muted hover:text-berry"
                       aria-label="Delete expense"
                     >
@@ -255,9 +322,9 @@ function ExpensesContent() {
             <div>
               <Label htmlFor="expense-category">{t.expenses.category}</Label>
               <Select id="expense-category" {...register('category')}>
-                {CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
+                {EXPENSE_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
                   </option>
                 ))}
               </Select>
@@ -301,6 +368,43 @@ function ExpensesContent() {
             </Button>
           </div>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+        title="Delete expense?"
+        description={
+          deleteTarget
+            ? `${deleteTarget.description} · ${formatTZS(deleteTarget.amount)}`
+            : undefined
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={Boolean(deleting)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => deleteTarget && void remove(deleteTarget.id)}
+              disabled={Boolean(deleting)}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 size={14} />}
+              Delete expense
+            </Button>
+          </>
+        }
+      >
+        <div className="rounded-xl border border-[#f0cdd5] bg-[#fbecef] px-3 py-2 text-xs leading-relaxed text-berry">
+          This removes the expense and updates net profit. This cannot be undone.
+        </div>
       </Dialog>
     </div>
   );

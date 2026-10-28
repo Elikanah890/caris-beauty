@@ -24,6 +24,7 @@ import { useAuthStore } from '@/store/auth-store';
 import { db } from '@/lib/db';
 import { useSnapshot } from '@/lib/hooks';
 import { activityFeed, dashboardOverview, profitMargin } from '@/lib/dashboard';
+import { periodRange, profitLoss } from '@/lib/reports';
 import { computeInsights } from '@/lib/insights';
 import { formatDate, formatQty, formatTZS, greeting } from '@/lib/format';
 import { can } from '@/lib/permissions';
@@ -47,7 +48,9 @@ function StatCard({
   icon: Icon,
   subtitle,
   tone,
-  href
+  href,
+  valueClassName,
+  large = false
 }: {
   label: string;
   value: string;
@@ -55,6 +58,8 @@ function StatCard({
   subtitle: string;
   tone: string;
   href?: string;
+  valueClassName?: string;
+  large?: boolean;
 }) {
   const card = (
     <Card className="surface-hover h-full overflow-hidden transition group-hover:border-brand-200">
@@ -65,7 +70,13 @@ function StatCard({
           </span>
         </div>
         <p className="mt-4 text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p>
-        <p className="numeric mt-1 font-display text-[26px] font-semibold leading-tight tracking-tight text-ink">
+        <p
+          className={cn(
+            'numeric mt-1 font-display font-semibold leading-tight tracking-tight',
+            large ? 'text-[30px]' : 'text-[26px]',
+            valueClassName ?? 'text-ink'
+          )}
+        >
           {value}
         </p>
         <p
@@ -161,13 +172,17 @@ function DashboardContent() {
     () => (snapshot ? dashboardOverview(snapshot, period) : null),
     [snapshot, period]
   );
+  const todayPnl = useMemo(
+    () => (snapshot ? profitLoss(snapshot, periodRange('today')) : null),
+    [snapshot]
+  );
   const activity = useMemo(() => (snapshot ? activityFeed(snapshot, 6) : []), [snapshot]);
   const insights = useMemo(
     () => (snapshot ? computeInsights(snapshot).slice(0, 3) : []),
     [snapshot]
   );
 
-  if (!data) {
+  if (!data || !todayPnl) {
     return (
       <div className="space-y-4">
         <div className="h-20 animate-pulse rounded-2xl bg-white/60" />
@@ -193,7 +208,7 @@ function DashboardContent() {
         : t.dashboard.greetingEvening;
   const shopName = businessRow?.[0]?.name ?? storedBusiness?.name ?? 'Your shop';
   const hasSales = data.today.saleCount > 0;
-  const margin = profitMargin(data.today.grossProfit, data.today.sales);
+  const margin = profitMargin(todayPnl.grossProfit, todayPnl.revenue);
   const salesSubtitle =
     data.today.saleCount === 0
       ? t.dashboard.noSales
@@ -231,7 +246,7 @@ function DashboardContent() {
         <div className="animate-fade-up">
           <StatCard
             label={t.dashboard.salesToday}
-            value={formatTZS(data.today.sales)}
+            value={formatTZS(todayPnl.revenue)}
             icon={Wallet}
             subtitle={salesSubtitle}
             tone="bg-brand-50 text-brand-600"
@@ -239,30 +254,35 @@ function DashboardContent() {
         </div>
         <div className="animate-fade-up delay-1">
           <StatCard
-            label={t.dashboard.profitToday}
-            value={formatTZS(data.today.grossProfit)}
+            label="Gross Profit"
+            value={formatTZS(todayPnl.grossProfit)}
             icon={TrendingUp}
-            subtitle={margin === null ? t.dashboard.noProfitData : `Profit margin: ${margin}%`}
+            subtitle={margin === null ? t.dashboard.noProfitData : `Gross margin: ${margin}%`}
             tone="bg-[#edf3f7] text-sky"
           />
         </div>
         <div className="animate-fade-up delay-2">
           <StatCard
-            label={t.dashboard.lowStockProducts}
-            value={formatQty(data.stock.reorder)}
-            icon={Package}
-            subtitle={t.dashboard.viewStockRestock}
-            tone="bg-[#eef4ec] text-moss"
-            href="/stock"
+            label="Expenses today"
+            value={formatTZS(todayPnl.expensesTotal)}
+            icon={Receipt}
+            subtitle={costsSubtitle}
+            tone="bg-[#fdf3dd] text-[#9a7020]"
           />
         </div>
         <div className="animate-fade-up delay-3">
           <StatCard
-            label={t.dashboard.shopCosts}
-            value={formatTZS(data.today.expenses)}
-            icon={Receipt}
-            subtitle={costsSubtitle}
-            tone="bg-[#fdf3dd] text-[#9a7020]"
+            label="Net Profit"
+            value={formatTZS(todayPnl.netProfit)}
+            icon={TrendingUp}
+            subtitle="After expenses"
+            tone={
+              todayPnl.netProfit >= 0
+                ? 'bg-[#eef4ec] text-moss'
+                : 'bg-[#fbecef] text-berry'
+            }
+            valueClassName={todayPnl.netProfit >= 0 ? 'text-moss' : 'text-berry'}
+            large
           />
         </div>
       </div>

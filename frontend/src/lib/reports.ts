@@ -126,6 +126,43 @@ export function summary(snapshot: ReportSnapshot, range: DateRange) {
   };
 }
 
+export interface ProfitLoss {
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  expensesTotal: number;
+  expensesByCategory: Record<string, number>;
+  netProfit: number;
+  profitMargin: number;
+}
+
+/**
+ * Local-first Profit & Loss. Uses the same sale/COGS/expense definitions as
+ * `summary` so the dashboard, reports cards and P&L table always agree.
+ */
+export function profitLoss(snapshot: ReportSnapshot, range: DateRange): ProfitLoss {
+  const totals = summary(snapshot, range);
+  const expenseRows = snapshot.expenses.filter(
+    (expense) => !expense.deletedAt && inRange(expense.spentAt, range)
+  );
+  const expensesByCategory: Record<string, number> = {};
+  for (const expense of expenseRows) {
+    expensesByCategory[expense.category] =
+      (expensesByCategory[expense.category] ?? 0) + Number(expense.amount);
+  }
+
+  return {
+    revenue: totals.sales,
+    cogs: totals.cogs,
+    grossProfit: totals.grossProfit,
+    expensesTotal: totals.expenses,
+    expensesByCategory,
+    netProfit: totals.netProfit,
+    profitMargin:
+      totals.sales > 0 ? Math.round((totals.netProfit / totals.sales) * 100) : 0
+  };
+}
+
 export function topProducts(
   snapshot: ReportSnapshot,
   range: DateRange,

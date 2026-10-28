@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   closeDay,
   periodRange,
+  profitLoss,
   shrinkage,
   slowMovers,
   summary,
@@ -236,5 +237,31 @@ describe('offline reports', () => {
     expect(day.sales).toBe(5000);
     expect(day.cashExpected).toBe(5000);
     expect(day.netProfit).toBe(500);
+  });
+
+  it('computes local profit and loss including expenses', () => {
+    const range = periodRange('today', null, null, NOW);
+    const result = profitLoss(
+      {
+        sales: [sale({ total: 5000, subtotal: 5000 })],
+        saleItems: [item({ qtyBase: 2000, costPerBase: 2, lineTotal: 5000 })],
+        payments: [payment({ amount: 5000, tender: 'cash' })],
+        expenses: [expense],
+        products: [product()],
+        movements: [movement()],
+        users: [],
+        customers: [],
+        categories
+      },
+      range
+    );
+
+    expect(result.revenue).toBe(5000);
+    expect(result.cogs).toBe(4000);
+    expect(result.grossProfit).toBe(1000);
+    expect(result.expensesTotal).toBe(500);
+    expect(result.expensesByCategory).toEqual({ Transport: 500 });
+    expect(result.netProfit).toBe(500);
+    expect(result.profitMargin).toBe(10);
   });
 });

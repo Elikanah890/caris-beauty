@@ -26,6 +26,7 @@ import {
   closeDay,
   includedSaleIds,
   periodRange,
+  profitLoss,
   shrinkage,
   slowMovers,
   staffPerformance,
@@ -34,6 +35,7 @@ import {
   trendSeries
 } from '@/lib/reports';
 import { computeInsights } from '@/lib/insights';
+import { expenseCategoryLabel } from '@/lib/expense-categories';
 import { downloadEfdCsv } from '@/lib/export';
 import {
   eatDateKey,
@@ -84,6 +86,35 @@ function Stat({
   );
 }
 
+function signedTZS(value: number): string {
+  return value < 0 ? `−${formatTZS(Math.abs(value))}` : formatTZS(value);
+}
+
+function PnLRow({
+  label,
+  value,
+  strong = false,
+  className
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3 py-0.5',
+        strong && 'font-semibold',
+        className
+      )}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="numeric shrink-0">{value}</span>
+    </div>
+  );
+}
+
 function InsightPill({ insight }: { insight: Insight }) {
   return (
     <div
@@ -121,6 +152,7 @@ function ReportsContent() {
           }
         : periodRange(period);
     const totals = summary(snapshot, range);
+    const pnl = profitLoss(snapshot, range);
     const top = topProducts(snapshot, range, 8, topBy);
     const slow = slowMovers(snapshot, range, 0).slice(0, 8);
     const staff = staffPerformance(snapshot, range);
@@ -130,7 +162,7 @@ function ReportsContent() {
     const day = closeDay(snapshot, closeDate);
     const insights = computeInsights(snapshot);
     const ids = includedSaleIds(snapshot.sales, snapshot.payments, range);
-    return { range, totals, top, slow, staff, shrink, categories, trend, day, insights, ids };
+    return { range, totals, pnl, top, slow, staff, shrink, categories, trend, day, insights, ids };
   }, [snapshot, period, customFrom, customTo, topBy, closeDate]);
 
   if (!data) {
@@ -147,7 +179,7 @@ function ReportsContent() {
     );
   }
 
-  const { totals, top, slow, staff, shrink, categories, trend, day, insights } = data;
+  const { totals, pnl, top, slow, staff, shrink, categories, trend, day, insights } = data;
   const periodLabel =
     period === 'custom'
       ? `${formatDate(new Date(`${customFrom}T00:00:00+03:00`), { day: 'numeric', month: 'short' })} – ${formatDate(new Date(`${customTo}T00:00:00+03:00`), { day: 'numeric', month: 'short' })}`
@@ -248,6 +280,90 @@ function ReportsContent() {
           <Badge variant="brand">{periodLabel}</Badge>
         )}
       </div>
+
+      <Card className="mt-4">
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>Profit &amp; Loss</CardTitle>
+            <Badge variant={pnl.netProfit >= 0 ? 'success' : 'danger'}>
+              {pnl.netProfit >= 0 ? 'Profit' : 'Loss'}
+            </Badge>
+          </div>
+          <Badge variant="brand">{periodLabel}</Badge>
+        </CardHeader>
+        <CardContent className="text-xs">
+          <div className="grid gap-x-8 lg:grid-cols-2">
+            <div>
+              <PnLRow label="Sales Revenue" value={formatTZS(pnl.revenue)} />
+              <PnLRow
+                label="Cost of Goods Sold"
+                value={`−${formatTZS(pnl.cogs)}`}
+                className="text-muted"
+              />
+              <div className="my-2 border-t border-dashed border-line" />
+              <PnLRow label="Gross Profit" value={formatTZS(pnl.grossProfit)} strong />
+            </div>
+
+            <div className="mt-4 lg:mt-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Operating Expenses
+              </p>
+              <div className="mt-1">
+                {Object.entries(pnl.expensesByCategory)
+                  .filter(([, amount]) => amount > 0)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([category, amount]) => (
+                    <PnLRow
+                      key={category}
+                      label={expenseCategoryLabel(category)}
+                      value={`−${formatTZS(amount)}`}
+                      className="text-muted"
+                    />
+                  ))}
+                {Object.values(pnl.expensesByCategory).every((amount) => amount <= 0) && (
+                  <p className="py-1 text-[11px] text-muted">No expenses in this period.</p>
+                )}
+              </div>
+              <div className="my-2 border-t border-dashed border-line" />
+              <PnLRow
+                label="Total Expenses"
+                value={`−${formatTZS(pnl.expensesTotal)}`}
+                strong
+              />
+            </div>
+          </div>
+
+          <div className="my-3 border-t border-line" />
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Net Profit
+              </p>
+              <p
+                className={cn(
+                  'numeric font-display text-2xl font-bold',
+                  pnl.netProfit >= 0 ? 'text-moss' : 'text-berry'
+                )}
+              >
+                {signedTZS(pnl.netProfit)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Profit Margin
+              </p>
+              <p
+                className={cn(
+                  'numeric text-lg font-semibold',
+                  pnl.profitMargin >= 0 ? 'text-moss' : 'text-berry'
+                )}
+              >
+                {pnl.profitMargin}%
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Stat label={t.reports.revenue} value={formatTZS(totals.sales)} tone="bg-brand-50 text-brand-600" icon={Wallet} hint={`${totals.saleCount} sales`} />

@@ -5,9 +5,13 @@ import { databaseUrl } from '../env';
 import { logger } from '../logger';
 
 export async function runMigrations(connectionString = databaseUrl): Promise<void> {
+  const useSsl = /render\.com/i.test(connectionString);
   const instance = knex({
     client: 'pg',
-    connection: { connectionString },
+    connection: {
+      connectionString,
+      ssl: useSsl ? { rejectUnauthorized: false } : false
+    },
     pool: { min: 0, max: 2 }
   });
 

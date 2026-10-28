@@ -285,13 +285,15 @@ export interface SyncQueueItem {
   error?: string | null;
 }
 
-export interface LocalAuth {
+export interface OfflineCredential {
   email: string;
-  pinHash: string;
-  pinSalt: string;
-  deviceId: string;
+  passwordHash: string;
+  passwordSalt: string;
+  deviceId: string | null;
   cachedPermissions: Permissions;
   cachedProfile: User;
+  lastVerifiedAt: string;
+  offlineExpiresAt: string | null;
   updatedAt: string;
 }
 

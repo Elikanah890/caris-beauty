@@ -1,6 +1,6 @@
 import { apiRequest, refreshSession } from './api';
-import { clearOfflineUnlocked, logoutOnline } from './auth';
-import { db } from './db';
+import { logoutOnline } from './auth';
+import { clearLocalAuth, db } from './db';
 import { clearAccessToken, getAccessToken } from './token';
 import { useAuthStore } from '@/store/auth-store';
 import { useSyncStore } from '@/store/sync-store';
@@ -55,7 +55,7 @@ export async function forceFullSync(): Promise<void> {
     // The local reset must still work if the network drops after authorization.
   }
   clearAccessToken();
-  clearOfflineUnlocked();
+  await clearLocalAuth();
 
   useAuthStore.getState().reset();
   useSyncStore.setState({
@@ -67,5 +67,5 @@ export async function forceFullSync(): Promise<void> {
     error: null
   });
 
-  window.location.replace('/auth/login?refreshed=1');
+  window.location.replace('/login?refreshed=1');
 }

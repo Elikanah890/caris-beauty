@@ -27,6 +27,7 @@ interface DeviceRow {
   name: string;
   user_id: string | null;
   last_receipt_seq: number;
+  released_at: Date | null;
 }
 
 export function serializeUser(row: UserRow): AuthUser {
@@ -91,16 +92,43 @@ export async function authRequired(
       );
     }
 
-    if (claims.deviceId && row.device_id !== claims.deviceId) {
-      throw unauthorized('This device has been released. Please sign in online again.');
+    if (claims.deviceId) {
+      const currentDevice = (await db<DeviceRow>('devices')
+        .where({ id: claims.deviceId })
+        .first()) as DeviceRow | undefined;
+      if (!currentDevice) {
+        throw new AppError(
+          401,
+          'DEVICE_REVOKED',
+          'This device is no longer registered. Please sign in again.'
+        );
+      }
+      if (currentDevice.released_at) {
+        throw new AppError(
+          401,
+          'DEVICE_REVOKED',
+          'This device was signed out. Please sign in again.'
+        );
+      }
+      if (currentDevice.user_id !== row.id) {
+        throw new AppError(
+          401,
+          'DEVICE_REVOKED',
+          'This device is now used by another account. Please sign in again.'
+        );
+      }
     }
 
     const user = serializeUser(row);
-    const deviceRow = user.deviceId
-      ? ((await db<DeviceRow>('devices').where({ id: user.deviceId }).first()) as
+    const deviceRow = claims.deviceId
+      ? ((await db<DeviceRow>('devices').where({ id: claims.deviceId }).first()) as
           | DeviceRow
           | undefined)
-      : undefined;
+      : user.deviceId
+        ? ((await db<DeviceRow>('devices').where({ id: user.deviceId }).first()) as
+            | DeviceRow
+            | undefined)
+        : undefined;
 
     req.auth = { user, device: deviceRow ? serializeDevice(deviceRow) : null };
     next();

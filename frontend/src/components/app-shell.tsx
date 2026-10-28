@@ -33,7 +33,6 @@ import { SyncStatus } from './sync-status';
 import { InstallPwaButton } from './install-pwa-button';
 import { SyncEngine } from './sync-engine';
 import { logoutOnline } from '@/lib/auth';
-import { clearLocalAuth } from '@/lib/db';
 import { clearAccessToken } from '@/lib/token';
 import { toast } from './ui/toast';
 import type { PermissionFlag } from '@/lib/types';
@@ -127,7 +126,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     await logoutOnline();
-    await clearLocalAuth();
     clearAccessToken();
     reset();
     toast.info('Signed out', 'Your sales queue is safe on this device.');

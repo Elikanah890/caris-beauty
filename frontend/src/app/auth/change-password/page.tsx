@@ -12,9 +12,8 @@ import { Input, Label } from '@/components/ui/input';
 import { Splash } from '@/components/splash';
 import { useBootstrap } from '@/lib/use-bootstrap';
 import { useAuthStore } from '@/store/auth-store';
-import { changePasswordOnline, hasPinForUser, logoutOnline } from '@/lib/auth';
+import { changePasswordOnline, cacheOfflineCredential, logoutOnline } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
-import { clearLocalAuth } from '@/lib/db';
 import { clearAccessToken } from '@/lib/token';
 import { toast } from '@/components/ui/toast';
 
@@ -36,8 +35,8 @@ export default function ChangePasswordPage() {
   const router = useRouter();
   const initialized = useAuthStore((state) => state.initialized);
   const user = useAuthStore((state) => state.user);
+  const device = useAuthStore((state) => state.device);
   const setUser = useAuthStore((state) => state.setUser);
-  const setHasLocalAuth = useAuthStore((state) => state.setHasLocalAuth);
   const reset = useAuthStore((state) => state.reset);
     const [serverError, setServerError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
@@ -72,10 +71,14 @@ export default function ChangePasswordPage() {
     setServerError(null);
     try {
       await changePasswordOnline(values.currentPassword, values.newPassword);
-      setUser({ ...user, mustChangePassword: false });
+      const updatedUser = { ...user, mustChangePassword: false };
+      await cacheOfflineCredential(
+        updatedUser,
+        values.newPassword,
+        device?.id ?? null
+      ).catch(() => undefined);
+      setUser(updatedUser);
       toast.success('Password updated');
-      const pinExists = await hasPinForUser(user.email);
-      setHasLocalAuth(false);
       router.replace(user.role === 'owner' ? '/dashboard' : '/pos');
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : 'Could not change password');
@@ -84,7 +87,6 @@ export default function ChangePasswordPage() {
 
   const signOut = async () => {
     await logoutOnline();
-    await clearLocalAuth();
     clearAccessToken();
     reset();
     router.replace('/auth/login');

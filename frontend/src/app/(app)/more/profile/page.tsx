@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Fingerprint,
   KeyRound,
   LogOut,
   MonitorSmartphone,
@@ -16,14 +15,14 @@ import { PageHeader } from '@/components/ui/misc';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PinSetupDialog } from '@/components/pin-setup-dialog';
 import { useAuthStore } from '@/store/auth-store';
 import { useSyncStore } from '@/store/sync-store';
 import { db, clearLocalAuth } from '@/lib/db';
 import { logoutOnline } from '@/lib/auth';
+import { apiRequest } from '@/lib/api';
 import { clearAccessToken } from '@/lib/token';
 import { can, PERMISSION_LABELS } from '@/lib/permissions';
-import { PERMISSION_FLAGS } from '@/lib/types';
+import { PERMISSION_FLAGS, type Device } from '@/lib/types';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import { t } from '@/lib/strings';
 import { toast } from '@/components/ui/toast';
@@ -36,21 +35,65 @@ export default function ProfilePage() {
   const business = useAuthStore((state) => state.business);
   const reset = useAuthStore((state) => state.reset);
   const { pending, online, lastSyncedAt } = useSyncStore();
-  const [pinOpen, setPinOpen] = useState(false);
-  const localAuth = useLiveQuery(
-    () => (user ? db.localAuth.get(user.email) : Promise.resolve(undefined)),
-    [user?.email]
+  const devices = useLiveQuery(
+    () => (user ? db.devices.filter((entry) => entry.userId === user.id).toArray() : []),
+    [user?.id]
   );
+
+  useEffect(() => {
+    if (!user) return;
+    if (typeof navigator === 'undefined' || !navigator.onLine) return;
+    let cancelled = false;
+    void apiRequest<{ devices: Device[] }>('/devices')
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.devices.length) await db.devices.bulkPut(res.devices);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   if (!user) return null;
 
+  const sortedDevices = [...(devices ?? [])].sort((a, b) =>
+    a.id === device?.id ? -1 : b.id === device?.id ? 1 : a.name.localeCompare(b.name)
+  );
+
   const logout = async () => {
     await logoutOnline();
-    await clearLocalAuth();
     clearAccessToken();
     reset();
     toast.info('Signed out', 'Your sales queue is safe on this device.');
     router.replace('/auth/login');
+  };
+
+  const signOutDevice = async (target: Device) => {
+    const isCurrent = target.id === device?.id;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        await apiRequest(`/devices/${target.id}/revoke`, { method: 'POST' });
+      } else if (!isCurrent) {
+        toast.error('Signing out another device needs internet');
+        return;
+      }
+      await db.devices.update(target.id, { userId: null });
+      if (isCurrent) {
+        await clearLocalAuth();
+        clearAccessToken();
+        reset();
+        toast.success('Device signed out', 'Sign in again on this device.');
+        router.replace('/auth/login?deviceReleased=1');
+      } else {
+        toast.success('Device signed out', `${target.name} will be signed out.`);
+      }
+    } catch (err) {
+      toast.error(
+        'Could not sign out device',
+        err instanceof Error ? err.message : undefined
+      );
+    }
   };
 
   const granted = PERMISSION_FLAGS.filter((flag) => can(user, flag));
@@ -83,9 +126,6 @@ export default function ProfilePage() {
                   {business?.name ?? 'Duka'} · Member since {relativeTime(user.createdAt)}
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setPinOpen(true)}>
-                <Fingerprint size={14} /> {localAuth ? 'Change PIN' : 'Set PIN'}
-              </Button>
             </div>
 
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
@@ -111,28 +151,54 @@ export default function ProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Device</CardTitle>
-            <Badge variant={online ? 'success' : 'warning'}>{online ? 'Online' : 'Offline'}</Badge>
+            <CardTitle>Your devices</CardTitle>
+            <Badge variant={online ? 'success' : 'warning'}>
+              {online ? 'Online' : 'Offline'}
+            </Badge>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
-                <Smartphone size={19} />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">
-                  {device?.name ?? 'No registered device'}
+            <div className="space-y-2">
+              {sortedDevices.length === 0 ? (
+                <p className="rounded-xl bg-cream px-3 py-2 text-[11px] text-muted">
+                  No devices recorded yet.
                 </p>
-                <p className="truncate font-mono text-[10px] text-muted">
-                  {device?.id ?? '—'}
-                </p>
-              </div>
+              ) : (
+                sortedDevices.map((entry) => {
+                  const current = entry.id === device?.id;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center gap-3 rounded-xl border border-line bg-white px-3 py-2.5"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                        <Smartphone size={17} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="truncate text-xs font-semibold text-ink">
+                            {entry.name}
+                          </p>
+                          {current && <Badge variant="success">This device</Badge>}
+                        </div>
+                        <p className="truncate font-mono text-[10px] text-muted">
+                          {entry.receiptPrefix} · {entry.id.slice(0, 8)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-berry"
+                        onClick={() => void signOutDevice(entry)}
+                      >
+                        Sign out
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
             </div>
-            <div className="mt-4 space-y-2 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-muted">PIN on this device</span>
-                <span className="font-semibold text-ink">{localAuth ? 'Set' : 'Not set'}</span>
-              </div>
+
+            <div className="mt-4 space-y-2 border-t border-line pt-3 text-[11px]">
               <div className="flex justify-between">
                 <span className="text-muted">Pending sync</span>
                 <span className="font-semibold text-ink">{pending}</span>
@@ -143,8 +209,8 @@ export default function ProfilePage() {
               </div>
             </div>
             <p className="mt-3 rounded-xl bg-cream px-3 py-2 text-[10px] leading-relaxed text-muted">
-              One account is locked to one device. Ask the owner to release it from Staff if you
-              change phones.
+              Each device keeps its own offline data. Sign out a device to require its password
+              again.
             </p>
           </CardContent>
         </Card>
@@ -217,22 +283,6 @@ export default function ProfilePage() {
               </span>
               <Badge variant="default">Online</Badge>
             </button>
-            <button
-              type="button"
-              onClick={() => setPinOpen(true)}
-              className="flex w-full items-center gap-3 rounded-xl border border-line px-3 py-2.5 text-left transition hover:border-brand-200 hover:bg-brand-50/30"
-            >
-              <span className="rounded-lg bg-cream p-1.5 text-muted">
-                <Fingerprint size={15} />
-              </span>
-              <span className="flex-1">
-                <span className="block text-xs font-semibold text-ink">
-                  {localAuth ? t.profile.resetPin : 'Set offline PIN'}
-                </span>
-                <span className="block text-[10px] text-muted">Works with airplane mode on</span>
-              </span>
-              <Badge variant="success">Offline</Badge>
-            </button>
             <Button variant="ghost" className="w-full justify-start text-berry" onClick={() => void logout()}>
               <LogOut size={15} /> {t.auth.logout}
             </Button>
@@ -248,8 +298,6 @@ export default function ProfilePage() {
           <MonitorSmartphone size={12} /> Device {device?.receiptPrefix ?? '—'}
         </span>
       </div>
-
-      <PinSetupDialog open={pinOpen} onDone={() => setPinOpen(false)} />
     </div>
   );
 }

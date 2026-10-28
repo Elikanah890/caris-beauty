@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,9 +31,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { PermissionGate } from '@/components/permission-gate';
 import { toast } from '@/components/ui/toast';
-import { db, clearLocalAuth } from '@/lib/db';
+import { db } from '@/lib/db';
 import { apiRequest } from '@/lib/api';
-import { clearAccessToken } from '@/lib/token';
 import { useAuthStore } from '@/store/auth-store';
 import { normalizePermissions, PERMISSION_LABELS, defaultEmployeePermissions } from '@/lib/permissions';
 import { PERMISSION_FLAGS, type Permissions, type User } from '@/lib/types';
@@ -135,7 +133,6 @@ function PermissionToggles({
 }
 
 function StaffContent() {
-  const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
   const business = useAuthStore((state) => state.business);
   const users = useLiveQuery(() => db.users.toArray(), []);
@@ -152,7 +149,6 @@ function StaffContent() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
-  const [releaseUser, setReleaseUser] = useState<User | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [createPermissions, setCreatePermissions] = useState<Permissions>(defaultEmployeePermissions());
   const online = typeof navigator === 'undefined' ? true : navigator.onLine;
@@ -306,48 +302,6 @@ function StaffContent() {
       });
     } catch (err) {
       toast.error('Could not reset password', err instanceof Error ? err.message : undefined);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const releaseDevice = async () => {
-    if (!releaseUser) return;
-    if (!online) {
-      toast.error('Device release needs internet');
-      return;
-    }
-    const selfRelease = releaseUser.id === currentUser?.id;
-    setBusy(`release-${releaseUser.id}`);
-    try {
-      const res = await apiRequest<{ user: User }>(`/users/${releaseUser.id}/release-device`, {
-        method: 'POST'
-      });
-      await db.users.put({
-        ...res.user,
-        permissions: normalizePermissions('employee', res.user.permissions)
-      });
-      if (selfRelease) {
-        // The owner is freeing the device for another account (handover).
-        // Sign out locally so the next login belongs to the new user.
-        await clearLocalAuth();
-        clearAccessToken();
-        useAuthStore.getState().reset();
-        toast.success(
-          'Device released',
-          'This device is now free. Sign in with the account that will use it.'
-        );
-        router.replace('/auth/login?deviceReleased=1');
-        return;
-      }
-      if (res.user.deviceId) {
-        const device = await db.devices.get(res.user.deviceId);
-        if (device) await db.devices.put({ ...device, userId: null });
-      }
-      toast.success('Device released', `${releaseUser.name} can sign in on a new device.`);
-      setReleaseUser(null);
-    } catch (err) {
-      toast.error('Could not release device', err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
@@ -568,11 +522,6 @@ function StaffContent() {
                         >
                           <KeyRound size={13} /> Reset
                         </Button>
-                        {user.deviceId && (
-                          <Button variant="ghost" size="sm" onClick={() => setReleaseUser(user)}>
-                            <MonitorSmartphone size={13} /> Release
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -596,20 +545,9 @@ function StaffContent() {
                       </div>
                     )}
                     {isOwner && (
-                      <>
-                        {user.deviceId && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setReleaseUser(user)}
-                          >
-                            <MonitorSmartphone size={13} /> Release device
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => void loadAudit(user)}>
-                          <ClipboardList size={14} /> Audit
-                        </Button>
-                      </>
+                      <Button variant="ghost" size="sm" onClick={() => void loadAudit(user)}>
+                        <ClipboardList size={14} /> Audit
+                      </Button>
                     )}
                   </div>
 
@@ -639,7 +577,7 @@ function StaffContent() {
         open={addOpen}
         onOpenChange={setAddOpen}
         title={t.staff.add}
-        description="The employee signs in online once, changes their password, then sets a device PIN."
+        description="The employee signs in online once, changes their password, then can use the app on any device."
         size="lg"
       >
         <form onSubmit={handleSubmit(createEmployee)} className="space-y-4">
@@ -850,42 +788,6 @@ function StaffContent() {
             <MessageCircle size={14} /> WhatsApp
           </Button>
           <Button onClick={() => setCredentials(null)}>Done</Button>
-        </div>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(releaseUser)}
-        onOpenChange={(open) => !open && setReleaseUser(null)}
-        title={t.staff.release}
-        description={
-          releaseUser?.id === currentUser?.id
-            ? 'This signs you out on this device and frees it for another account. You can sign in again on another phone or browser.'
-            : t.staff.releaseConfirm
-        }
-        size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setReleaseUser(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              disabled={busy === `release-${releaseUser?.id}`}
-              onClick={() => void releaseDevice()}
-            >
-              <Trash2 size={14} /> Release device
-            </Button>
-          </>
-        }
-      >
-        <div className="rounded-xl bg-cream px-3 py-2 text-xs text-muted">
-          <p className="font-semibold text-ink">{releaseUser?.name}</p>
-          <p>{releaseUser?.email}</p>
-          <p className="mt-1">
-            {releaseUser?.id === currentUser?.id
-              ? 'This device will be free for another account. Your owner account remains in control; sign in again on another device.'
-              : 'They will need internet once to register the new device.'}
-          </p>
         </div>
       </Dialog>
 

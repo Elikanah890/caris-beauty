@@ -64,7 +64,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
   const initialized = useAuthStore((state) => state.initialized);
-  const hasLocalAuth = useAuthStore((state) => state.hasLocalAuth);
   const setUser = useAuthStore((state) => state.setUser);
   const setBusiness = useAuthStore((state) => state.setBusiness);
   const reset = useAuthStore((state) => state.reset);
@@ -91,9 +90,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!initialized) return;
     if (!user) {
-      router.replace(
-        !navigator.onLine && hasLocalAuth ? '/auth/pin' : '/auth/login'
-      );
+      router.replace('/auth/login');
       return;
     }
     if (user.mustChangePassword && pathname !== '/auth/change-password') {
@@ -104,7 +101,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (rule && !allow(user, rule)) {
       router.replace(landingFor(user));
     }
-  }, [initialized, user, hasLocalAuth, router, pathname]);
+  }, [initialized, user, router, pathname]);
 
   useEffect(() => {
     const handleRevoked = (event: Event) => {
@@ -112,22 +109,35 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       revokedRef.current = true;
       const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail ?? {};
       const disabled = detail.code === 'ACCOUNT_DISABLED';
+      const revoked = detail.code === 'DEVICE_REVOKED';
       try {
         window.sessionStorage.setItem('duka_auth_notice', disabled ? 'disabled' : 'expired');
       } catch {
         // Session storage may be unavailable; the toast still informs the user.
       }
       void (async () => {
-        await clearLocalAuth();
+        if (disabled || revoked) await clearLocalAuth();
         clearAccessToken();
         reset();
         toast.error(
-          disabled ? 'Account deactivated' : 'Signed out',
+          disabled
+            ? 'Account deactivated'
+            : revoked
+              ? 'Device signed out'
+              : 'Signed out',
           disabled
             ? 'The owner has deactivated this account. You can no longer use it.'
-            : 'Your session ended. Please sign in again.'
+            : revoked
+              ? 'This device was signed out. Sign in again with your password.'
+              : 'Your session ended. Please sign in again.'
         );
-        router.replace(disabled ? '/auth/login?disabled=1' : '/auth/login?session=expired');
+        router.replace(
+          disabled
+            ? '/auth/login?disabled=1'
+            : revoked
+              ? '/auth/login?deviceReleased=1'
+              : '/auth/login?session=expired'
+        );
       })();
     };
     window.addEventListener('duka:session-revoked', handleRevoked);

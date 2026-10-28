@@ -7,7 +7,7 @@ import type {
   Customer,
   Device,
   Expense,
-  LocalAuth,
+  OfflineCredential,
   Payment,
   Product,
   ProductUnit,
@@ -41,7 +41,7 @@ export class DukaDB extends Dexie {
   expenses!: Table<Expense, string>;
   audit_log!: Table<AuditLog, string>;
   sync_queue!: Table<SyncQueueItem, string>;
-  localAuth!: Table<LocalAuth, string>;
+  offline_credentials!: Table<OfflineCredential, string>;
   app_meta!: Table<AppMeta, string>;
 
   constructor() {
@@ -68,6 +68,10 @@ export class DukaDB extends Dexie {
       localAuth: 'email, deviceId',
       app_meta: 'key'
     });
+    this.version(2).stores({
+      localAuth: null,
+      offline_credentials: 'email, updatedAt'
+    });
   }
 }
 
@@ -88,7 +92,7 @@ export async function getActiveBusiness(): Promise<Business | null> {
 }
 
 export async function clearLocalAuth(): Promise<void> {
-  await db.localAuth.clear();
+  await db.offline_credentials.clear();
   await db.app_meta.delete('activeEmail');
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem('duka_unlocked_email');

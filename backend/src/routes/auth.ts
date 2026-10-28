@@ -255,19 +255,43 @@ authRouter.post(
 
     const user = await loadUser(claims.sub);
     if (!user) throw unauthorized('Account not found');
-    if (!user.isActive) throw unauthorized('Account disabled');
-    if (claims.deviceId && user.deviceId !== claims.deviceId) {
-      clearRefreshCookie(res);
-      throw unauthorized('This device has been released. Please sign in online again.');
+    if (!user.isActive) {
+      throw new AppError(
+        403,
+        'ACCOUNT_DISABLED',
+        'Your account has been deactivated. Contact the owner.'
+      );
+    }
+    if (claims.deviceId) {
+      const device = (await db('devices').where({ id: claims.deviceId }).first()) as
+        | { user_id: string | null; released_at: Date | null }
+        | undefined;
+      if (!device || device.released_at) {
+        clearRefreshCookie(res);
+        throw new AppError(
+          401,
+          'DEVICE_REVOKED',
+          'This device was signed out. Please sign in again.'
+        );
+      }
+      if (device.user_id !== user.id) {
+        clearRefreshCookie(res);
+        throw new AppError(
+          401,
+          'DEVICE_REVOKED',
+          'This device is now used by another account. Please sign in again.'
+        );
+      }
     }
 
+    const deviceId = claims.deviceId ?? user.deviceId;
     const accessToken = signAccessToken({
       id: user.id,
       role: user.role,
       permissions: user.permissions,
-      deviceId: user.deviceId
+      deviceId
     });
-    const refreshToken = signRefreshToken({ id: user.id, deviceId: user.deviceId });
+    const refreshToken = signRefreshToken({ id: user.id, deviceId });
     setRefreshCookie(res, refreshToken);
 
     res.json({ accessToken, user });

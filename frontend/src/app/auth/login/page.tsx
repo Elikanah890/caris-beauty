@@ -11,15 +11,13 @@ import { ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { BrandLockup } from '@/components/brand-mark';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
-import { PinSetupDialog } from '@/components/pin-setup-dialog';
 import { InstallPwaButton } from '@/components/install-pwa-button';
 import { Splash } from '@/components/splash';
 import { useBootstrap } from '@/lib/use-bootstrap';
 import { useAuthStore } from '@/store/auth-store';
-import { hasPinForUser, loginOnline } from '@/lib/auth';
+import { loginOnline, offlineLogin } from '@/lib/auth';
 import { pullAll } from '@/lib/sync';
 import { ApiError } from '@/lib/api';
-import { probeConnectivity } from '@/lib/network';
 import { db } from '@/lib/db';
 import { t } from '@/lib/strings';
 import { toast } from '@/components/ui/toast';
@@ -37,11 +35,8 @@ export default function LoginPage() {
   const initialized = useAuthStore((state) => state.initialized);
   const user = useAuthStore((state) => state.user);
   const setSession = useAuthStore((state) => state.setSession);
-  const setHasLocalAuth = useAuthStore((state) => state.setHasLocalAuth);
-  const hasLocalAuth = useAuthStore((state) => state.hasLocalAuth);
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [showPinSetup, setShowPinSetup] = useState(false);
   const [pendingRedirect, setPendingRedirect] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const businessRows = useLiveQuery(() => db.business.toArray(), []);
@@ -57,30 +52,10 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (initialized && user && !showPinSetup && !isSubmitting && !pendingRedirect) {
+    if (initialized && user && !isSubmitting && !pendingRedirect) {
       router.replace(user.role === 'owner' ? '/dashboard' : '/pos');
     }
-  }, [initialized, user, router, showPinSetup, isSubmitting, pendingRedirect]);
-
-  useEffect(() => {
-    if (!initialized || user) return;
-    let cancelled = false;
-    void (async () => {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        if (hasLocalAuth) router.replace('/auth/pin');
-        return;
-      }
-      // navigator.onLine can be true while the API is unreachable. In that
-      // case, offer the offline PIN instead of a login that cannot succeed.
-      const reachable = await probeConnectivity(true);
-      if (!cancelled && !reachable && hasLocalAuth) {
-        router.replace('/auth/pin');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialized, user, hasLocalAuth, router]);
+  }, [initialized, user, router, isSubmitting, pendingRedirect]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -93,7 +68,7 @@ export default function LoginPage() {
     }
 
     if (params.get('deviceReleased') === '1') {
-      setNotice('Device released. Sign in with the account that will use this device.');
+      setNotice('Device signed out. Sign in again with your password.');
       params.delete('deviceReleased');
       changed = true;
     }
@@ -137,42 +112,69 @@ export default function LoginPage() {
     router.replace(role === 'owner' ? '/dashboard' : '/pos');
   };
 
+  const completeOffline = async (values: FormValues) => {
+    const session = await offlineLogin(values.email, values.password);
+    setSession({
+      user: session.user,
+      device: session.device,
+      business: session.business,
+      offline: true
+    });
+    if (session.user.mustChangePassword) {
+      setPendingRedirect(true);
+      router.replace('/auth/change-password');
+      return;
+    }
+    toast.success(
+      'Signed in offline',
+      'Your changes will sync when the connection returns.'
+    );
+    finish(session.user.role);
+  };
+
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
+    const browserOffline =
+      typeof navigator !== 'undefined' && !navigator.onLine;
+
     try {
-      const session = await loginOnline(values.email, values.password);
+      if (browserOffline) {
+        await completeOffline(values);
+        return;
+      }
+
+      let session;
+      try {
+        session = await loginOnline(values.email, values.password);
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'OFFLINE') {
+          // navigator.onLine can be true while the server is unreachable.
+          await completeOffline(values);
+          return;
+        }
+        throw err;
+      }
+
       setSession({
         user: session.user,
         device: session.device,
         business: session.business,
-        offline: !navigator.onLine
+        offline: false
       });
-      const pinExists = await hasPinForUser(session.user.email);
-      setHasLocalAuth(pinExists);
       if (session.user.mustChangePassword) {
         setPendingRedirect(true);
         router.replace('/auth/change-password');
         return;
       }
       void pullAll().catch(() => undefined);
-      if (!pinExists) {
-        setShowPinSetup(true);
-        return;
-      }
       toast.success(`Welcome back, ${session.user.name.split(' ')[0]}`);
       finish(session.user.role);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'OFFLINE') {
-          setServerError(t.auth.firstLoginOnline);
-        } else if (err.code === 'ACCOUNT_DISABLED') {
-          setServerError(
-            'Your account has been deactivated by the owner. You can no longer use this account.'
-          );
-        } else if (err.code === 'DEVICE_LOCKED') {
-          setServerError(
-            `${err.message} Use a different phone or browser for this account, or release the device from the account currently using it.`
-          );
+          setServerError(err.message || t.auth.firstLoginOnline);
+        } else if (err.code === 'ACCOUNT_DISABLED' || err.code === 'DEVICE_REVOKED') {
+          setServerError(err.message);
         } else {
           setServerError(err.message);
         }
@@ -270,28 +272,9 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {hasLocalAuth && (
-            <p className="mt-4 text-center text-xs text-muted">
-              No internet?{' '}
-              <Link href="/auth/pin" className="font-semibold text-brand-600 hover:text-brand-700">
-                Open with your PIN
-              </Link>
-            </p>
-          )}
-
           <InstallPwaButton variant="outline" className="mt-4 w-full" />
         </div>
       </div>
-
-      <PinSetupDialog
-        open={showPinSetup}
-        onDone={() => {
-          setShowPinSetup(false);
-          setHasLocalAuth(true);
-          const role = useAuthStore.getState().user?.role ?? 'employee';
-          finish(role);
-        }}
-      />
     </div>
   );
 }

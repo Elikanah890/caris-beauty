@@ -28,7 +28,6 @@ export function PwaRegister() {
     const warmRoutes = [
       '/',
       '/offline',
-      '/auth/pin',
       '/auth/login',
       '/pos',
       '/stock',

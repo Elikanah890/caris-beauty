@@ -9,6 +9,7 @@ import { db } from './db';
 import { errorHandler, notFoundHandler } from './lib/errors';
 import { authRouter } from './routes/auth';
 import { usersRouter, auditRouter } from './routes/users';
+import { devicesRouter } from './routes/devices';
 import { productsRouter, categoriesRouter, unitsRouter } from './routes/products';
 import { salesRouter } from './routes/sales';
 import { purchasesRouter } from './routes/purchases';
@@ -77,6 +78,7 @@ export function createApp() {
   });
   api.use('/auth', authRouter);
   api.use('/users', usersRouter);
+  api.use('/devices', devicesRouter);
   api.use('/audit', auditRouter);
   api.use('/products', productsRouter);
   api.use('/categories', categoriesRouter);

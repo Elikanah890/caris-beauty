@@ -112,8 +112,22 @@ export function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T
 
 let refreshPromise: Promise<{ accessToken: string; user: unknown } | null> | null = null;
 
+export interface RefreshFailure {
+  code: string;
+  message: string;
+}
+
+let lastRefreshFailure: RefreshFailure | null = null;
+
+export function getLastRefreshFailure(): RefreshFailure | null {
+  return lastRefreshFailure;
+}
+
 export async function refreshSession(force = false): Promise<{ accessToken: string; user: unknown } | null> {
-  if (!force && !hasSessionHint()) return null;
+  if (!force && !hasSessionHint()) {
+    lastRefreshFailure = null;
+    return null;
+  }
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {
@@ -125,13 +139,37 @@ export async function refreshSession(force = false): Promise<{ accessToken: stri
       });
       if (!res.ok) {
         clearAccessToken();
+        let code = 'UNAUTHORIZED';
+        let message = 'Please sign in again.';
+        try {
+          const body = (await res.json()) as {
+            error?: { code?: string; message?: string };
+          };
+          code = body?.error?.code ?? code;
+          message = body?.error?.message ?? message;
+        } catch {
+          // Non-JSON error response.
+        }
+        lastRefreshFailure = { code, message };
+        if (
+          typeof window !== 'undefined' &&
+          (code === 'ACCOUNT_DISABLED' || code === 'DEVICE_REVOKED')
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('duka:session-revoked', {
+              detail: { code, message }
+            })
+          );
+        }
         return null;
       }
       notifyConnectivity(true);
+      lastRefreshFailure = null;
       const data = (await res.json()) as { accessToken: string; user: unknown };
       setAccessToken(data.accessToken);
       return data;
     } catch {
+      lastRefreshFailure = { code: 'OFFLINE', message: 'You are offline.' };
       notifyConnectivity(false);
       return null;
     } finally {

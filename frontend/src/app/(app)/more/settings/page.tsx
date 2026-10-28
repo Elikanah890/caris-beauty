@@ -497,8 +497,8 @@ function SettingsContent() {
                 }}
               />
               <p className="text-[10px] leading-relaxed text-muted">
-                Backup includes catalog, staff, sales and stock history. PIN and sync queue are
-                not exported. Import merges rows on this device.
+                Backup includes catalog, staff, sales and stock history. Offline login cache and
+                sync queue are not exported. Import merges rows on this device.
               </p>
               <a
                 href="/reports"
@@ -664,7 +664,7 @@ function SettingsContent() {
         <div className="flex items-start gap-3 rounded-2xl border border-[#f2dfb5] bg-[#fdf3dd] p-3 text-[#8b681f]">
           <ShieldAlert size={18} className="mt-0.5 shrink-0" />
           <p className="text-xs leading-relaxed">
-            You will be signed out and the offline PIN on this device will be removed.
+            You will be signed out and the offline login cache on this device will be removed.
             Sign back in with your owner email and password. Any offline sales or changes
             that have not reached the server will be removed. This cannot be undone.
           </p>

@@ -8,6 +8,7 @@ interface DeviceRow {
   name: string;
   user_id: string | null;
   last_receipt_seq: number;
+  released_at: Date | null;
 }
 
 async function buildPrefix(trx: Db, desired?: string): Promise<string> {
@@ -28,8 +29,8 @@ async function buildPrefix(trx: Db, desired?: string): Promise<string> {
 }
 
 /**
- * Bind a client-generated UUID device to a user. One email = one active device.
- * Throws DEVICE_LOCKED when another device is already bound.
+ * Bind a client-generated UUID device to a user. Multiple devices per user are
+ * allowed; a device shared by several accounts belongs to the latest account.
  */
 export async function bindDevice(
   trx: Db,
@@ -45,44 +46,21 @@ export async function bindDevice(
   }
 
   const user = (await trx('users').where({ id: input.userId }).first()) as
-    | { id: string; device_id: string | null; role: 'owner' | 'employee' }
+    | { id: string }
     | undefined;
   if (!user) throw conflict('USER_NOT_FOUND', 'User not found');
-
-  const existingBinding = user.device_id
-    ? ((await trx('devices').where({ id: user.device_id }).first()) as DeviceRow | undefined)
-    : undefined;
-
-  if (existingBinding && existingBinding.id !== input.deviceId) {
-    if (user.role === 'owner') {
-      // Owner: auto-release old device and allow rebind. Password is
-      // sufficient proof of identity for the shop owner.
-      await trx('devices')
-        .where({ id: existingBinding.id })
-        .update({
-          user_id: null,
-          released_at: trx.fn.now(),
-          updated_at: trx.fn.now()
-        });
-      await trx('users')
-        .where({ id: input.userId })
-        .update({ device_id: null, updated_at: trx.fn.now() });
-    } else {
-      // Employee: strict device binding. Owner must release via Staff.
-      throw conflict(
-        'DEVICE_LOCKED',
-        'This account is locked to another device. Ask the owner to release it first.'
-      );
-    }
-  }
 
   const target = (await trx('devices').where({ id: input.deviceId }).first()) as
     | DeviceRow
     | undefined;
 
   if (target) {
+    // If another account was using this browser/device, detach its
+    // last-device pointer. Its other devices keep working independently.
     if (target.user_id && target.user_id !== input.userId) {
-      throw conflict('DEVICE_LOCKED', 'This device is registered to another account');
+      await trx('users')
+        .where({ id: target.user_id, device_id: target.id })
+        .update({ device_id: null, updated_at: trx.fn.now() });
     }
     const updated = (await trx('devices')
       .where({ id: target.id })

@@ -18,7 +18,6 @@ import {
 import { BrandLockup } from '@/components/brand-mark';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
-import { PinSetupDialog } from '@/components/pin-setup-dialog';
 import { useBootstrap } from '@/lib/use-bootstrap';
 import { useAuthStore } from '@/store/auth-store';
 import { setupOnline } from '@/lib/auth';
@@ -57,7 +56,6 @@ export default function SetupPage() {
   const setSession = useAuthStore((state) => state.setSession);
   const [step, setStep] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [showPin, setShowPin] = useState(false);
 
   const {
     register,
@@ -106,7 +104,7 @@ export default function SetupPage() {
         business: session.business,
         offline: false
       });
-      setShowPin(true);
+      router.replace('/dashboard');
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'SETUP_COMPLETE') {
@@ -340,17 +338,9 @@ export default function SetupPage() {
         </div>
 
         <p className="mt-8 text-center text-[10px] text-muted">
-          Your password is hashed. Your PIN never leaves this device.
+          Your password is hashed and stored securely.
         </p>
       </div>
-
-      <PinSetupDialog
-        open={showPin}
-        onDone={() => {
-          setShowPin(false);
-          router.replace('/dashboard');
-        }}
-      />
     </div>
   );
 }

@@ -97,6 +97,6 @@ purchasesRouter.post(
         deviceId: req.auth!.device?.id ?? null
       })
     );
-    res.status(201).json({ purchase });
+    res.status(201).json({ purchase, items: purchase.items });
   })
 );

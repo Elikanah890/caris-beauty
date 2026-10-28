@@ -3,7 +3,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { writeAudit } from '../lib/audit';
 import { lineTotal, roundMoney } from '../lib/money';
 import { uuid } from '../lib/ids';
-import { getProduct, resolveUnit } from './stock';
+import { getProduct, getStock, resolveUnit } from './stock';
 import { camelize } from '../lib/case';
 import type { AuthUser } from '../lib/types';
 
@@ -72,6 +72,7 @@ export async function createPurchase(
   }
 
   const prepared: Array<Record<string, unknown>> = [];
+  const purchaseTotals = new Map<string, { qtyBase: number; costValue: number }>();
   let total = 0;
 
   for (const item of input.items) {
@@ -95,6 +96,11 @@ export async function createPurchase(
       : costPerBase * resolved.factor;
     const line = lineTotal(Number(item.qty), unitCost);
     total += line;
+
+    const aggregate = purchaseTotals.get(product.id) ?? { qtyBase: 0, costValue: 0 };
+    aggregate.qtyBase += resolved.qtyBase;
+    aggregate.costValue += resolved.qtyBase * costPerBase;
+    purchaseTotals.set(product.id, aggregate);
 
     prepared.push({
       id: item.id ?? uuid(),
@@ -147,22 +153,42 @@ export async function createPurchase(
     }))
   );
 
-  for (const item of prepared) {
-    const product = await trx('products').where({ id: item.product_id }).first();
-    if (product && Number(product.cost_per_base) !== Number(item.cost_per_base)) {
+  // Weighted-average cost: (stock_before × old_cost + received_value) /
+  // (stock_before + received_qty). Grouped by product so multiple lines of the
+  // same product are handled correctly.
+  for (const [productId, aggregate] of purchaseTotals) {
+    if (aggregate.qtyBase <= 0) continue;
+    const product = await trx('products').where({ id: productId }).first();
+    if (!product) continue;
+
+    const stockAfter = await getStock(trx, productId);
+    const previousStock = stockAfter - aggregate.qtyBase;
+    const currentCost = Number(product.cost_per_base);
+    const incomingCost = aggregate.costValue / aggregate.qtyBase;
+    const denominator = previousStock + aggregate.qtyBase;
+    const newCost =
+      previousStock > 0 && denominator > 0
+        ? Math.round(
+            (previousStock * currentCost + aggregate.costValue) / denominator
+          )
+        : Math.round(incomingCost);
+
+    if (newCost !== currentCost) {
       await trx('products')
-        .where({ id: item.product_id })
-        .update({ cost_per_base: item.cost_per_base, updated_at: trx.fn.now() });
+        .where({ id: productId })
+        .update({ cost_per_base: newCost, updated_at: trx.fn.now() });
       await writeAudit(trx, {
         userId: user.id,
         action: 'product.cost_change',
         entity: 'products',
-        entityId: item.product_id as string,
+        entityId: productId,
         details: {
           source: 'purchase',
           purchaseId,
-          from: product.cost_per_base,
-          to: item.cost_per_base
+          from: currentCost,
+          to: newCost,
+          previousStock,
+          incomingQty: aggregate.qtyBase
         }
       });
     }

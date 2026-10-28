@@ -26,11 +26,12 @@ import { useCatalog } from '@/lib/hooks';
 import { useAuthStore } from '@/store/auth-store';
 import { recordPurchase, LocalRuleError } from '@/lib/repo';
 import { db } from '@/lib/db';
+import { apiRequest } from '@/lib/api';
 import { defaultChoice, roundTZS } from '@/lib/pricing';
 import { eatDateKey, formatDate, formatQty, formatTZS } from '@/lib/format';
 import { t } from '@/lib/strings';
 import { uuid } from '@/lib/utils';
-import type { Purchase, PurchaseItem } from '@/lib/types';
+import type { Purchase, PurchaseItem, Supplier } from '@/lib/types';
 
 interface DraftRow {
   key: string;
@@ -76,11 +77,17 @@ function PurchasesContent() {
     { key: uuid(), productId: '', unitId: '', qty: '1', costPerUnit: '' }
   ]);
   const [error, setError] = useState<string | null>(null);
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierPhone, setSupplierPhone] = useState('');
+  const [supplierError, setSupplierError] = useState<string | null>(null);
+  const [savingSupplier, setSavingSupplier] = useState(false);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { isSubmitting }
   } = useForm<HeaderForm>({
     resolver: zodResolver(headerSchema),
@@ -113,11 +120,14 @@ function PurchasesContent() {
       updateRow(key, { productId, unitId: '', costPerUnit: '' });
       return;
     }
-    const choice = defaultChoice(product.choices);
+    const baseChoice =
+      product.choices.find(
+        (choice) => choice.isBase || choice.unitId === product.baseUnitId
+      ) ?? defaultChoice(product.choices);
     updateRow(key, {
       productId,
-      unitId: choice.unitId,
-      costPerUnit: String(Math.round(Number(product.costPerBase) * choice.factor))
+      unitId: baseChoice.unitId,
+      costPerUnit: String(Math.round(Number(product.costPerBase)))
     });
   };
 
@@ -133,34 +143,96 @@ function PurchasesContent() {
     });
   };
 
+  const addSupplier = async () => {
+    const name = supplierName.trim();
+    if (name.length < 2) {
+      setSupplierError('Enter at least 2 characters');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSupplierError('Adding suppliers needs internet');
+      return;
+    }
+    setSavingSupplier(true);
+    setSupplierError(null);
+    try {
+      const res = await apiRequest<{ supplier: Supplier }>('/suppliers', {
+        method: 'POST',
+        body: { name, phone: supplierPhone.trim() || null }
+      });
+      await db.suppliers.put({
+        ...res.supplier,
+        updatedAt: new Date().toISOString()
+      });
+      setValue('supplierId', res.supplier.id, {
+        shouldDirty: true,
+        shouldValidate: true
+      });
+      toast.success('Supplier added', res.supplier.name);
+      setSupplierName('');
+      setSupplierPhone('');
+      setSupplierOpen(false);
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : 'Could not add supplier');
+    } finally {
+      setSavingSupplier(false);
+    }
+  };
+
   const submit = async (header: HeaderForm) => {
     if (!user) return;
     setError(null);
-    const items = rows
-      .filter((row) => row.productId && Number(row.qty) > 0)
-      .map((row) => ({
-        productId: row.productId,
-        unitId: row.unitId,
-        qty: Number(row.qty),
-        costPerUnit: Number(row.costPerUnit) || 0
-      }));
-    if (items.length === 0) {
+    if (!header.supplierId) {
+      setError('Select a supplier');
+      return;
+    }
+    const selected = rows.filter(
+      (row) => row.productId && Number(row.qty) > 0
+    );
+    if (selected.length === 0) {
       setError('Add at least one product');
       return;
     }
+    if (selected.some((row) => !row.unitId)) {
+      setError('Choose a unit for each product');
+      return;
+    }
+    if (
+      selected.some(
+        (row) =>
+          !Number.isFinite(Number(row.costPerUnit)) ||
+          Number(row.costPerUnit) < 0
+      )
+    ) {
+      setError('Enter a valid cost for each product');
+      return;
+    }
+    const items = selected.map((row) => ({
+      productId: row.productId,
+      unitId: row.unitId,
+      qty: Number(row.qty),
+      costPerUnit: Number(row.costPerUnit) || 0
+    }));
     try {
       await recordPurchase({
-        supplierId: header.supplierId || null,
+        supplierId: header.supplierId,
         reference: header.reference || null,
         notes: header.notes || null,
         items,
         user,
         device
       });
-      toast.success('Purchase recorded', 'Stock and cost prices updated.');
+      toast.success(
+        'Purchase recorded — stock updated',
+        `${items.length} item${items.length === 1 ? '' : 's'} added.`
+      );
       setOpen(false);
       reset({ supplierId: '', reference: '', notes: '' });
       setRows([{ key: uuid(), productId: '', unitId: '', qty: '1', costPerUnit: '' }]);
+      setSupplierOpen(false);
+      setSupplierName('');
+      setSupplierPhone('');
+      setSupplierError(null);
     } catch (err) {
       setError(err instanceof LocalRuleError ? err.message : 'Could not record purchase');
     }
@@ -274,14 +346,79 @@ function PurchasesContent() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="purchase-supplier">Supplier</Label>
-              <Select id="purchase-supplier" {...register('supplierId')}>
-                <option value="">None</option>
-                {(suppliers ?? []).map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  id="purchase-supplier"
+                  {...register('supplierId')}
+                  className="flex-1"
+                >
+                  <option value="">Select supplier</option>
+                  {(suppliers ?? []).map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </Select>
+                {user?.role === 'owner' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSupplierOpen((value) => !value);
+                      setSupplierError(null);
+                    }}
+                  >
+                    <Plus size={13} /> Add
+                  </Button>
+                )}
+              </div>
+              {supplierOpen && user?.role === 'owner' && (
+                <div className="mt-2 rounded-xl border border-line bg-cream/60 p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={supplierName}
+                      onChange={(event) => {
+                        setSupplierName(event.target.value);
+                        setSupplierError(null);
+                      }}
+                      placeholder="Supplier name"
+                    />
+                    <Input
+                      value={supplierPhone}
+                      onChange={(event) => setSupplierPhone(event.target.value)}
+                      placeholder="Phone (optional)"
+                      inputMode="tel"
+                    />
+                  </div>
+                  {supplierError && (
+                    <p className="mt-2 text-[11px] font-medium text-berry">
+                      {supplierError}
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void addSupplier()}
+                      disabled={savingSupplier || supplierName.trim().length < 2}
+                    >
+                      {savingSupplier ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSupplierOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="purchase-ref">Reference</Label>
@@ -319,11 +456,14 @@ function PurchasesContent() {
                           onChange={(event) => onProductChange(row.key, event.target.value)}
                         >
                           <option value="">Choose product</option>
-                          {(catalog?.products ?? []).map((entry) => (
-                            <option key={entry.id} value={entry.id}>
-                              {entry.name}
-                            </option>
-                          ))}
+                          {(catalog?.products ?? [])
+                            .filter((entry) => !entry.deletedAt)
+                            .map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {entry.name}
+                                {entry.sku ? ` (${entry.sku})` : ''}
+                              </option>
+                            ))}
                         </Select>
                       </div>
                       <button

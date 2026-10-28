@@ -119,7 +119,7 @@ customersRouter.delete(
 export const suppliersRouter = Router();
 
 const supplierSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: z.string().min(2).max(120),
   phone: z.string().max(20).nullable().optional(),
   email: z.string().email().max(160).nullable().optional(),
   address: z.string().max(200).nullable().optional()

@@ -470,6 +470,16 @@ export async function recordPurchase(input: {
       const unitCosts: number[] = [];
       let total = 0;
 
+      const movementsBefore = await db.stock_movements.toArray();
+      const stockMap = new Map<string, number>();
+      for (const movement of movementsBefore) {
+        stockMap.set(
+          movement.productId,
+          (stockMap.get(movement.productId) ?? 0) + Number(movement.qtyBase)
+        );
+      }
+      const purchaseCosts = new Map<string, { qtyBase: number; costValue: number }>();
+
       for (const [index, item] of input.items.entries()) {
         const product = await db.products.get(item.productId);
         if (!product) throw new LocalRuleError('Product not found');
@@ -499,6 +509,11 @@ export async function recordPurchase(input: {
         const lineTotal = roundTZS(item.qty * unitCost);
         total += lineTotal;
         unitCosts.push(unitCost);
+
+        const aggregate = purchaseCosts.get(product.id) ?? { qtyBase: 0, costValue: 0 };
+        aggregate.qtyBase += qtyBase;
+        aggregate.costValue += qtyBase * costPerBase;
+        purchaseCosts.set(product.id, aggregate);
 
         prepared.push({
           id: uuid(),
@@ -552,12 +567,25 @@ export async function recordPurchase(input: {
       await db.purchase_items.bulkPut(prepared);
       await db.stock_movements.bulkPut(movements);
 
-      for (const item of prepared) {
-        const product = await db.products.get(item.productId as string);
-        if (product && Number(product.costPerBase) !== Number(item.costPerBase)) {
+      // Weighted-average cost, matching the server calculation.
+      for (const [productId, aggregate] of purchaseCosts) {
+        if (aggregate.qtyBase <= 0) continue;
+        const product = await db.products.get(productId);
+        if (!product) continue;
+        const stockBefore = stockMap.get(productId) ?? 0;
+        const currentCost = Number(product.costPerBase);
+        const incomingCost = aggregate.costValue / aggregate.qtyBase;
+        const denominator = stockBefore + aggregate.qtyBase;
+        const newCost =
+          stockBefore > 0 && denominator > 0
+            ? Math.round(
+                (stockBefore * currentCost + aggregate.costValue) / denominator
+              )
+            : Math.round(incomingCost);
+        if (newCost !== currentCost) {
           await db.products.put({
             ...product,
-            costPerBase: item.costPerBase,
+            costPerBase: newCost,
             updatedAt: purchasedAt
           });
         }

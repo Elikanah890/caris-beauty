@@ -12,13 +12,12 @@ import { releaseDevice } from '../services/devices';
 import { authRequired, requireOwner, serializeUser } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { env } from '../env';
+import { expandOrigins } from '../lib/origins';
 
 export const usersRouter = Router();
 
 function loginUrl(): string {
-  const origins = env.CORS_ORIGIN.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const origins = expandOrigins(env.CORS_ORIGIN).filter(Boolean);
   const origin =
     origins.find((entry) => entry.includes('localhost')) ?? origins[0] ?? 'http://localhost:3000';
   return `${origin.replace(/\/$/, '')}/login`;

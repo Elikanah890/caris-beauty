@@ -7,6 +7,7 @@ import { env } from './env';
 import { logger } from './logger';
 import { db } from './db';
 import { errorHandler, notFoundHandler } from './lib/errors';
+import { expandOrigins } from './lib/origins';
 import { authRouter } from './routes/auth';
 import { usersRouter, auditRouter } from './routes/users';
 import { devicesRouter } from './routes/devices';
@@ -32,7 +33,7 @@ export function createApp() {
   );
   app.use(
     cors({
-      origin: env.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+      origin: expandOrigins(env.CORS_ORIGIN),
       credentials: true
     })
   );

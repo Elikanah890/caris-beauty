@@ -127,6 +127,44 @@ also honour `sslmode` when it is present.
   address exists.
 - `TEST_DATABASE_URL` should stay on a local PostgreSQL instance; backend tests
   drop and recreate the `public` schema, so never point it at Neon.
+- A new Neon database is **empty**. If you are switching from Render Postgres,
+  either complete first-run setup at `/auth/setup` or migrate the old data
+  before going live (see below).
+- Set `CORS_ORIGIN` to the real public origin, for example
+  `https://www.cariscosmetic.co.tz,https://cariscosmetic.co.tz`. The API also
+  accepts the apex/`www` variant of each configured origin automatically.
+
+### Migrating existing data from Render Postgres to Neon
+
+On a machine that can reach both databases (Render's **External** connection
+string and Neon's connection string):
+
+```bash
+# 1. Make sure Neon has the current schema
+cd backend
+DATABASE_URL="$NEON_DATABASE_URL" npm run migrate
+
+# 2. Copy data only, without overwriting Neon's schema_migrations table
+pg_dump "$OLD_RENDER_DATABASE_URL" --data-only --no-owner --no-privileges \
+  --exclude-table=schema_migrations --format=custom --file=caris-data.dump
+
+# 3. Restore the data into Neon
+pg_restore --data-only --no-owner --no-privileges \
+  --dbname="$NEON_DATABASE_URL" caris-data.dump
+```
+
+This keeps Neon's 12 applied migrations and copies the old users, business,
+products, sales and stock rows. Verify with:
+
+```sql
+SELECT count(*) FROM users;
+SELECT count(*) FROM products;
+```
+
+Then set `DATABASE_URL` on Render to the Neon connection string and redeploy.
+
+If you prefer a clean start instead of migrating, open `/auth/setup` on the
+production domain and create the owner account there.
 
 ---
 

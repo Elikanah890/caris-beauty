@@ -1,17 +1,18 @@
 import knex, { type Knex } from 'knex';
 import pg from 'pg';
 import { databaseUrl } from './env';
+import { preferIpv4 } from './db/net';
+import { connectionStringWithoutSslMode, resolveSslConfig } from './db/ssl';
+
+preferIpv4();
 
 pg.types.setTypeParser(20, (value: string) => Number(value));
-
-// Render Postgres requires SSL. Local Postgres does not.
-const useSsl = /render\.com/i.test(databaseUrl);
 
 export const db: Knex = knex({
   client: 'pg',
   connection: {
-    connectionString: databaseUrl,
-    ssl: useSsl ? { rejectUnauthorized: false } : false
+    connectionString: connectionStringWithoutSslMode(databaseUrl),
+    ssl: resolveSslConfig(databaseUrl)
   },
   pool: { min: 0, max: 10 },
   acquireConnectionTimeout: 10_000

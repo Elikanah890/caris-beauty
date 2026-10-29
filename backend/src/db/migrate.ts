@@ -3,14 +3,16 @@ import path from 'node:path';
 import knex from 'knex';
 import { databaseUrl } from '../env';
 import { logger } from '../logger';
+import { preferIpv4 } from './net';
+import { connectionStringWithoutSslMode, resolveSslConfig } from './ssl';
 
 export async function runMigrations(connectionString = databaseUrl): Promise<void> {
-  const useSsl = /render\.com/i.test(connectionString);
+  preferIpv4();
   const instance = knex({
     client: 'pg',
     connection: {
-      connectionString,
-      ssl: useSsl ? { rejectUnauthorized: false } : false
+      connectionString: connectionStringWithoutSslMode(connectionString),
+      ssl: resolveSslConfig(connectionString)
     },
     pool: { min: 0, max: 2 }
   });

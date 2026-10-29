@@ -56,11 +56,12 @@ cd frontend && npm test && npm run lint && npm run build
 
 ## Deployment
 
-- Backend + PostgreSQL: **Render** (`render.yaml`)
-- Frontend PWA: **Vercel**
+- Backend + PostgreSQL: **VPS** (recommended) or **Render** (`render.yaml`)
+- Managed PostgreSQL: **Neon** (SSL enabled automatically)
+- Frontend PWA: **Vercel** or served by Nginx on the VPS
 
-Full instructions, environment variables and the cross-site cookie setup are in
-[`DEPLOYMENT.md`](./DEPLOYMENT.md).
+Full instructions, environment variables, the Neon setup and the cross-site
+cookie setup are in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 
 ## Security notes
 

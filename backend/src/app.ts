@@ -2,12 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import { env } from './env';
 import { logger } from './logger';
 import { db } from './db';
 import { errorHandler, notFoundHandler } from './lib/errors';
 import { expandOrigins } from './lib/origins';
+import { writeAuditStandalone } from './lib/audit';
 import { authRouter } from './routes/auth';
 import { usersRouter, auditRouter } from './routes/users';
 import { devicesRouter } from './routes/devices';
@@ -24,6 +26,10 @@ import { publicRouter } from './routes/public';
 
 export function createApp() {
   const app = express();
+
+  // Render terminates TLS in front of the API. Trust one proxy hop so req.ip
+  // is the client address used by the login rate limiter.
+  app.set('trust proxy', 1);
 
   app.use(
     helmet({
@@ -62,6 +68,39 @@ export function createApp() {
       }
     })
   );
+
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 8,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => {
+      const email = (req.body as { email?: unknown } | undefined)?.email;
+      const key = typeof email === 'string' ? email.trim().toLowerCase() : '';
+      return `${req.ip ?? 'unknown'}:${key}`;
+    },
+    handler: (req, res) => {
+      const email = (req.body as { email?: unknown } | undefined)?.email;
+      void writeAuditStandalone({
+        action: 'auth.rate_limited',
+        entity: 'auth',
+        details: {
+          ip: req.ip,
+          email_attempted: typeof email === 'string' ? email : null
+        }
+      }).catch(() => undefined);
+
+      res.status(429).json({
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many login attempts. Try again in 15 minutes.'
+        }
+      });
+    }
+  });
+
+  app.use('/api/v1/auth/login', loginLimiter);
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'duka-api', time: new Date().toISOString() });

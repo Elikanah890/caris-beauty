@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { CalendarDays, ReceiptText, Search } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/components/ui/misc';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { PermissionGate } from '@/components/permission-gate';
 import { toast } from '@/components/ui/toast';
 import { useSales } from '@/lib/hooks';
+import { db } from '@/lib/db';
 import { useAuthStore } from '@/store/auth-store';
 import { can } from '@/lib/permissions';
 import { voidSaleLocal } from '@/lib/repo';
@@ -17,7 +19,7 @@ import { requestSync } from '@/lib/sync';
 import { inRange, periodRange } from '@/lib/reports';
 import { formatDateTime, formatQty, formatTZS } from '@/lib/format';
 import { t } from '@/lib/strings';
-import type { Period, Tender } from '@/lib/types';
+import type { Period, Sale, Tender } from '@/lib/types';
 
 const PERIODS: Array<{ id: Period; label: string }> = [
   { id: 'today', label: 'Today' },
@@ -40,6 +42,13 @@ function dayKey(value = new Date()): string {
 
 function SalesContent() {
   const sales = useSales(1000);
+  const users = useLiveQuery(() => db.users.toArray(), []);
+  const userNames = useMemo(
+    () => new Map((users ?? []).map((user) => [user.id, user.name])),
+    [users]
+  );
+  const cashierName = (sale: Sale) =>
+    sale.userName ?? (sale.userId ? userNames.get(sale.userId) : undefined) ?? '—';
   const user = useAuthStore((state) => state.user);
   const [period, setPeriod] = useState<Period>('today');
   const [customFrom, setCustomFrom] = useState(dayKey());
@@ -195,7 +204,7 @@ function SalesContent() {
                   >
                     <td className="px-4 py-3 font-semibold text-ink">{sale.receiptNo}</td>
                     <td className="px-4 py-3 text-muted">{formatDateTime(sale.soldAt)}</td>
-                    <td className="px-4 py-3 text-muted">{sale.userName ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted">{cashierName(sale)}</td>
                     <td className="numeric px-4 py-3 text-right font-semibold text-ink">
                       {formatTZS(sale.total)}
                     </td>
@@ -226,7 +235,7 @@ function SalesContent() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-cream/60 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Cashier</p>
-                <p className="mt-0.5 text-sm font-semibold text-ink">{selected.userName ?? '—'}</p>
+                <p className="mt-0.5 text-sm font-semibold text-ink">{cashierName(selected)}</p>
               </div>
               <div className="rounded-xl bg-cream/60 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Customer</p>

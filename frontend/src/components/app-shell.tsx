@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ReceiptText,
   Search,
   ShoppingBag,
   ShoppingCart,
@@ -43,6 +44,7 @@ interface NavItem {
   shortLabel: string;
   icon: typeof LayoutDashboard;
   permission?: PermissionFlag;
+  anyOf?: PermissionFlag[];
   ownerOnly?: boolean;
 }
 
@@ -51,6 +53,7 @@ const NAV: NavItem[] = [
   { href: '/pos', label: t.nav.sell, shortLabel: 'Sale', icon: ShoppingCart, permission: 'sales.make' },
   { href: '/stock', label: t.nav.stock, shortLabel: 'Stock', icon: Boxes, permission: 'stock.view' },
   { href: '/reports', label: t.nav.reports, shortLabel: 'Reports', icon: BarChart3, permission: 'reports.view' },
+  { href: '/sales', label: t.nav.sales, shortLabel: 'Sales', icon: ReceiptText, anyOf: ['reports.view', 'sales.void'] },
   { href: '/more/staff', label: t.more.team, shortLabel: 'Workers', icon: Users, ownerOnly: true },
   { href: '/more/expenses', label: t.more.expenses, shortLabel: 'Costs', icon: Wallet, permission: 'expenses.record' },
   { href: '/more/purchases', label: t.more.purchases, shortLabel: 'Purchases', icon: ShoppingBag, permission: 'stock.receive' },
@@ -60,8 +63,8 @@ const NAV: NavItem[] = [
   { href: '/more/profile', label: t.more.profile, shortLabel: 'Profile', icon: UserRound }
 ];
 
-const SHOP_HREFS = ['/dashboard', '/pos', '/stock', '/reports'];
-const MOBILE_HREFS = ['/dashboard', '/pos', '/stock', '/reports'];
+const SHOP_HREFS = ['/dashboard', '/pos', '/stock', '/reports', '/sales'];
+const MOBILE_HREFS = ['/dashboard', '/pos', '/stock', '/reports', '/sales'];
 
 function initials(name: string): string {
   return name
@@ -126,7 +129,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? user.role === 'owner'
       : item.permission
         ? can(user, item.permission)
-        : true
+        : item.anyOf
+          ? item.anyOf.some((flag) => can(user, flag))
+          : true
   );
 
   const shopNav = visibleNav.filter((item) => SHOP_HREFS.includes(item.href));

@@ -19,6 +19,7 @@ export const t = {
     sell: 'Make a sale',
     stock: 'Products in stock',
     reports: 'Shop reports',
+    sales: 'Sales history',
     more: 'Shop management',
     staff: 'Workers',
     expenses: 'Shop costs',
